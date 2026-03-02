@@ -130,13 +130,14 @@ jobs:
           FLAGS="ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- LLVM=1 LLVM_IAS=1 HOSTCC=gcc CC=clang -j$(nproc --all)"
           K_INC="-I$(pwd)/security/selinux -I$(pwd)/security/selinux/include -I$(pwd)/drivers"
           
-          # Injected the SIDTAB hash bit directly into the compiler so we don't need a fake flask.h
-          K_CFLAGS="-DCONFIG_SECURITY_SELINUX_SIDTAB_HASH_BITS=9 -Wno-error=implicit-function-declaration -Wno-error=strict-prototypes -Wno-error=implicit-int -Wno-error=int-conversion -Wno-error=declaration-after-statement -Wno-error=unused-variable -Wno-error=unused-but-set-variable -Wno-error=unused-function $K_INC"
+          # Inject the KernelSU constants directly into the compiler, bypassing config drops
+          K_CFLAGS="-DCONFIG_SECURITY_SELINUX_SIDTAB_HASH_BITS=9 -DCONFIG_KSU=1 -DCONFIG_KSU_NEXT=1 -DCONFIG_KSU_MANUAL_HOOK=1 -Wno-error=implicit-function-declaration -Wno-error=strict-prototypes -Wno-error=implicit-int -Wno-error=int-conversion -Wno-error=declaration-after-statement -Wno-error=unused-variable -Wno-error=unused-but-set-variable -Wno-error=unused-function $K_INC"
           
           make $FLAGS Image KCFLAGS="$K_CFLAGS" || {
               rm -f fs/namespace.o security/selinux/*.o drivers/kernelsu/*.o
               make $FLAGS Image KCFLAGS="$K_CFLAGS"
           }
+
           
       - name: 📦 Package Output
         run: |
