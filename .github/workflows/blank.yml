@@ -61,16 +61,9 @@ jobs:
             sed -i '1i #include <kernelsu/ksu.h>' "$file"
           done
 
-          # 5. RUTHLESS USB HEADER FIX
-          TCPCI_SRC=$(find drivers/usb/typec -name "tcpci.h" | head -n 1)
-          if [ -n "$TCPCI_SRC" ]; then
-            mkdir -p drivers/usb/typec/P86801_tcpc/inc
-            cp "$TCPCI_SRC" drivers/usb/typec/P86801_tcpc/ || true
-            cp "$TCPCI_SRC" drivers/usb/typec/P86801_tcpc/inc/ || true
-          fi
-          find drivers/usb/typec -type f -name "*.[ch]" -exec sed -i 's|"inc/tcpci.h"|"tcpci.h"|g' {} + || true
-          find drivers/usb/typec -type f -name "*.[ch]" -exec sed -i 's|"../inc/tcpci.h"|"tcpci.h"|g' {} + || true
-          find drivers/usb/typec -type f -name "*.[ch]" -exec sed -i 's|"../../inc/tcpci.h"|"tcpci.h"|g' {} + || true
+          # 5. USB HEADER FIX (Native approach)
+          # Inject the missing interrupt header, but do NOT move files. The compiler will handle paths natively.
+          find drivers/usb/typec -name "tcpci.h" -exec sed -i '1i #include <linux/interrupt.h>' {} + || true
 
           # 6. SAMSUNG & TECHPACK TYPOS
           find techpack/display -name "*.c" -exec sed -i 's/static inline _/static inline u32 _/g' {} +
@@ -128,15 +121,18 @@ jobs:
           export CCACHE_DIR=$GITHUB_WORKSPACE/.ccache
           ccache -M 5G
           FLAGS="ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- LLVM=1 LLVM_IAS=1 HOSTCC=gcc CC=clang -j$(nproc --all)"
-          K_INC="-I$(pwd)/security/selinux -I$(pwd)/security/selinux/include -I$(pwd)/drivers"
           
-          # Inject the KernelSU constants directly into the compiler, bypassing config drops
-          K_CFLAGS="-DCONFIG_SECURITY_SELINUX_SIDTAB_HASH_BITS=9 -DCONFIG_KSU=1 -DCONFIG_KSU_NEXT=1 -DCONFIG_KSU_MANUAL_HOOK=1 -Wno-error=implicit-function-declaration -Wno-error=strict-prototypes -Wno-error=implicit-int -Wno-error=int-conversion -Wno-error=declaration-after-statement -Wno-error=unused-variable -Wno-error=unused-but-set-variable -Wno-error=unused-function $K_INC"
+          # Add the broken Samsung USB directories natively to the compiler's search path
+          K_INC="-I$(pwd)/security/selinux -I$(pwd)/security/selinux/include -I$(pwd)/drivers -I$(pwd)/drivers/usb/typec/P86801_tcpc -I$(pwd)/drivers/usb/typec/P86801_tcpc/inc"
+          
+          # Added -Wno-error=undef and -Wno-error=visibility to silence the strict Clang checks
+          K_CFLAGS="-DCONFIG_SECURITY_SELINUX_SIDTAB_HASH_BITS=9 -DCONFIG_KSU=1 -DCONFIG_KSU_NEXT=1 -DCONFIG_KSU_MANUAL_HOOK=1 -Wno-error=implicit-function-declaration -Wno-error=strict-prototypes -Wno-error=implicit-int -Wno-error=int-conversion -Wno-error=declaration-after-statement -Wno-error=unused-variable -Wno-error=unused-but-set-variable -Wno-error=unused-function -Wno-error=undef -Wno-error=visibility $K_INC"
           
           make $FLAGS Image KCFLAGS="$K_CFLAGS" || {
               rm -f fs/namespace.o security/selinux/*.o drivers/kernelsu/*.o
               make $FLAGS Image KCFLAGS="$K_CFLAGS"
           }
+
 
           
       - name: 📦 Package Output
