@@ -109,6 +109,7 @@ jobs:
           make ARCH=arm64 HOSTCC=gcc CC="clang --target=aarch64-linux-gnu" CROSS_COMPILE=aarch64-linux-gnu- gta9pwifi_eur_open_defconfig
           ./scripts/config --file .config --enable KSU
           ./scripts/config --file .config --enable KSU_NEXT
+          ./scripts/config --file .config --enable KSU_MANUAL_HOOK
           ./scripts/config --file .config --disable LTO_CLANG
           ./scripts/config --file .config --disable TRIM_UNUSED_KSYMS
           yes "" | make ARCH=arm64 HOSTCC=gcc CC="clang --target=aarch64-linux-gnu" CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
