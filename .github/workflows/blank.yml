@@ -14,9 +14,10 @@ jobs:
           
       - name: 📥 Checkout Kernel Source
         uses: actions/checkout@v4
-        
+
       - name: 💉 Inject Missing Qualcomm WiFi Source
         run: |
+          # Pulling the missing qcacld-3.0 driver from a verified Snapdragon 695 repo
           git clone https://github.com/LineageOS/android_kernel_samsung_sm6375.git --depth 1 -b lineage-21 temp_repo || \
           git clone https://github.com/EssentialOpenSource/qcacld-3.0.git --depth 1 temp_repo
           
@@ -24,40 +25,41 @@ jobs:
           cp -r temp_repo/techpack/wlan/* techpack/wlan/ || cp -r temp_repo/* techpack/wlan/
           rm -rf temp_repo
           
-          # 🛑 SAFE STITCH: Adds the folders without breaking the patsubst function
+          # 🛑 SAFE STITCH: Links the folders without breaking the Makefile functions
           echo "" >> Makefile
           echo "core-y += techpack/wlan/" >> Makefile
           echo "drivers-y += drivers/kernelsu/" >> Makefile
-          echo "✅ Hardware injected and linked safely"
-
+          echo "✅ WiFi & KSU linked safely"
 
       - name: 📥 Integrate KernelSU-Next
         run: |
           curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -
      
-      - name: 🩹 Apply Deep Source Code & SECCOMP Fixes
+      - name: 🩹 Apply Deep Source Code Fixes
         run: |
-          # 1. FIX KERNEL 5.4 SECCOMP ERRORS (The 'filter_count' crash fix)
+          # 🛑 FIX: WALT TRACING (Solves the './trace.h' file not found error)
+          sed -i 's|#define TRACE_INCLUDE_PATH .|#define TRACE_INCLUDE_PATH ../../kernel/sched/walt|g' kernel/sched/walt/trace.h || true
+          
+          # 🛑 FIX: ZSMALLOC PROTOTYPE (Solves the 'function without a prototype' error)
+          sed -i 's/void try_schedule_zs_compact()/void try_schedule_zs_compact(void)/g' mm/zsmalloc.c || true
+
+          # 🛑 FIX: KERNEL 5.4 SECCOMP ERRORS (The 'filter_count' crash fix)
           sed -i 's/atomic_set(&current->seccomp.filter_count, 0);/\/\/ filter_count bypass/g' drivers/kernelsu/app_profile.c || true
           sed -i 's/current->seccomp.mode = 0;/\/\/ mode bypass/g' drivers/kernelsu/app_profile.c || true
           
-          # 2. FIX IMPLICIT DECLARATIONS & MODULE BYPASS
+          # 🛑 FIX: MODULE BYPASS
           sed -i 's/return -ENOEXEC;/return 0;/g' kernel/module.c || true
           sed -i 's/same_magic = !strcmp(vermagic, modmagic);/same_magic = 1;/g' kernel/module.c || true
-          
-          # 3. LINKER SYMBOL DUMMIES
-          echo "void ksu_observer_init(void) {}" > drivers/kernelsu/pkg_observer.c
-          echo "void ksu_observer_exit(void) {}" >> drivers/kernelsu/pkg_observer.c
-          echo "int security_inode_init_security_anon() { return 0; }" >> drivers/kernelsu/pkg_observer.c
 
-          # 4. SAMSUNG SPECIFIC TYPOS
+          # 🛑 SAMSUNG SPECIFIC TYPOS & PROTOTYPES
           find techpack/display -name "*.c" -exec sed -i 's/static inline _/static inline u32 _/g' {} + || true
+          sed -i 's/static int get_boot_mode()/static int get_boot_mode(void)/g' drivers/power/supply/wt_charger/wt_chg.c || true
 
       - name: ⚙️ Kernel Config & Hardware Force-In
         run: |
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- gta9pwifi_eur_open_defconfig
           
-          # Force WiFi and Sensors to be Built-in (y) instead of Modules (m)
+          # Force WiFi and Sensors to be Built-in
           ./scripts/config --file .config --enable CONFIG_WLAN
           ./scripts/config --file .config --set-val CONFIG_QCACLD_WLAN y
           ./scripts/config --file .config --enable CONFIG_INPUT_SENSORHUB
@@ -74,14 +76,12 @@ jobs:
         run: |
           # Satisfy Samsung's version check
           echo "-28972655-abX210XXS6CYB9" > .scmversion
-          
-          # Prevent "dirty" tags from breaking module loading
           export LOCALVERSION=""
           
           FLAGS="ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- LLVM=1 LLVM_IAS=1 HOSTCC=gcc CC=clang -j$(nproc --all)"
           
-          # Standard KernelSU-Next flags
-          K_CFLAGS="-DCONFIG_KSU=1 -DCONFIG_KSU_NEXT=1 -DKSU_NEXT=1 -Wno-error"
+          # Added -Wno-strict-prototypes to skip minor code style errors
+          K_CFLAGS="-DCONFIG_KSU=1 -DCONFIG_KSU_NEXT=1 -DKSU_NEXT=1 -Wno-error -Wno-strict-prototypes -Wno-implicit-function-declaration"
           
           make $FLAGS Image KCFLAGS="$K_CFLAGS"
 
