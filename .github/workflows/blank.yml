@@ -63,16 +63,21 @@ jobs:
           sed -i '/#define TRACE_INCLUDE_PATH/c\#define TRACE_INCLUDE_PATH ../../kernel/sched/walt' kernel/sched/walt/trace.h || true
           sed -i 's|register unsigned long current_stack_pointer asm ("sp");|#define current_stack_pointer ({ unsigned long sp; asm("mov %0, sp" : "=r"(sp)); sp; })|g' arch/arm64/include/asm/stack_pointer.h || true
           
-      - name: 8. KERNELSU COMPATIBILITY & WI-FI BYPASS
+      - name: 8. KERNELSU COMPATIBILITY & SECCOMP FIX
         run: |
           mkdir -p drivers/kernelsu/kernel
           cp drivers/kernelsu/ksu.h drivers/kernelsu/kernel/ksu.h || true
           
-          # 🛑 MODULE BYPASS: Forces Wi-Fi and Sensors to load despite the custom kernel
+          # 🛑 SECCOMP BYPASS (Fixes the 'filter_count' and 'mode' errors on 5.4)
+          sed -i 's/atomic_set(&current->seccomp.filter_count, 0);/\/\/ filter_count bypass/g' drivers/kernelsu/app_profile.c || true
+          sed -i 's/current->seccomp.mode = 0;/\/\/ mode bypass/g' drivers/kernelsu/app_profile.c || true
+          sed -i 's/current->seccomp.filter = NULL;/\/\/ filter bypass/g' drivers/kernelsu/app_profile.c || true
+          
+          # 🛑 MODULE & WI-FI BYPASS (Forces Samsung drivers to load)
           sed -i 's/return -ENOEXEC;/return 0;/g' kernel/module.c || true
           sed -i 's/same_magic = !strcmp(vermagic, modmagic);/same_magic = 1;/g' kernel/module.c || true
           
-          # 🛑 FSNOTIFY & LINKER DUMMIES: Prevents compile/link errors on 5.4
+          # 🛑 LINKER SYMBOL DUMMIES
           echo "void ksu_observer_init(void) {}" > drivers/kernelsu/pkg_observer.c
           echo "void ksu_observer_exit(void) {}" >> drivers/kernelsu/pkg_observer.c
           echo "int security_inode_init_security_anon() { return 0; }" >> drivers/kernelsu/pkg_observer.c
@@ -82,12 +87,13 @@ jobs:
           
           # 🛑 LEGACY 5.4 BACKPORTS
           sed -i 's/TWA_RESUME/true/g' drivers/kernelsu/*.c || true
+          sed -i '1i #include <linux/sched/task.h>' drivers/kernelsu/allowlist.c || true
           sed -i 's/#include <linux\/pgtable.h>/#include <asm\/pgtable.h>/g' drivers/kernelsu/*.c || true
           sed -i 's/strncpy_from_user_nofault/strncpy_from_unsafe_user/g' drivers/kernelsu/*.c || true
           sed -i 's/copy_from_user_nofault/copy_from_user/g' drivers/kernelsu/*.c || true
           sed -i 's/copy_to_user_nofault/copy_to_user/g' drivers/kernelsu/*.c || true
           
-          # 🛑 SELINUX & POLICY FIXES
+          # 🛑 SELINUX FIXES
           sed -i 's/struct selinux_state/struct ksu_selinux_state/g' drivers/kernelsu/selinux/selinux.h || true
           sed -i 's/struct selinux_state/struct ksu_selinux_state/g' drivers/kernelsu/selinux/selinux.c || true
           sed -i 's/struct filename_trans_key key;/return true;\n#if 0/g' drivers/kernelsu/selinux/sepolicy.c || true
