@@ -68,12 +68,6 @@ jobs:
           mkdir -p drivers/kernelsu/kernel
           cp drivers/kernelsu/ksu.h drivers/kernelsu/kernel/ksu.h || true
           
-          # 🛑 MISSING LINKER SYMBOLS (Bypasses missing 5.4 functions)
-          sed -i '1i #define security_inode_init_security_anon(...) 0' drivers/kernelsu/file_wrapper.c || true
-          sed -i '1i #define path_mount(...) 0' drivers/kernelsu/su_mount_ns.c || true
-          sed -i '1i #define path_umount(...) 0' drivers/kernelsu/kernel_umount.c || true
-          sed -i '1i #define seccomp_filter_release(...) do { } while (0)' drivers/kernelsu/app_profile.c || true
-          
           # 🛑 LEGACY 5.4 BACKPORT FIXES (Global TWA_RESUME, pgtable, strncpy, and copy_user)
           sed -i 's/TWA_RESUME/true/g' drivers/kernelsu/*.c || true
           sed -i '1i #include <linux/sched/task.h>' drivers/kernelsu/allowlist.c || true
@@ -83,9 +77,13 @@ jobs:
           sed -i 's/copy_from_user_nofault/copy_from_user/g' drivers/kernelsu/*.c || true
           sed -i 's/copy_to_user_nofault/copy_to_user/g' drivers/kernelsu/*.c || true
           
-          # 🛑 FSNOTIFY BYPASS (Corrected dummy function names)
+          # 🛑 FSNOTIFY AND LINKER BYPASS (Provides dummy functions for broken APIs and missing symbols)
           echo "void ksu_observer_init(void) {}" > drivers/kernelsu/pkg_observer.c
           echo "void ksu_observer_exit(void) {}" >> drivers/kernelsu/pkg_observer.c
+          echo "int security_inode_init_security_anon() { return 0; }" >> drivers/kernelsu/pkg_observer.c
+          echo "int path_mount() { return 0; }" >> drivers/kernelsu/pkg_observer.c
+          echo "int path_umount() { return 0; }" >> drivers/kernelsu/pkg_observer.c
+          echo "void seccomp_filter_release() {}" >> drivers/kernelsu/pkg_observer.c
           
           # 🛑 SECCOMP CACHE AND BYPASS FIXES (Fixes filter_count, mode, and syscall definitions)
           sed -i '1i #include <asm/unistd.h>' drivers/kernelsu/seccomp_cache.c || true
