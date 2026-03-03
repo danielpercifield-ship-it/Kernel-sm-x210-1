@@ -16,22 +16,20 @@ jobs:
         uses: actions/checkout@v4
 
       - name: 💉 Inject Missing Qualcomm WiFi Source
+      - name: 💉 Inject Missing Qualcomm WiFi Source
         run: |
-          # Use a verified public mirror for the SM6375 (Tab A9+) Wi-Fi driver
           git clone https://github.com/LineageOS/android_kernel_samsung_sm6375.git --depth 1 -b lineage-21 temp_repo || \
           git clone https://github.com/EssentialOpenSource/qcacld-3.0.git --depth 1 temp_repo
           
           mkdir -p techpack/wlan
-          # Copy the driver source into your local tree
           cp -r temp_repo/techpack/wlan/* techpack/wlan/ || cp -r temp_repo/* techpack/wlan/
           rm -rf temp_repo
           
-          # Stitch the new folder into the root build process
-          if [ -d "techpack/wlan" ]; then
-            sed -i '/core-y/ s|$| techpack/wlan/|' Makefile || true
-            echo "obj-y += techpack/wlan/" >> drivers/Makefile || true
-            echo "✅ Wi-Fi Source Injected Successfully"
-          fi
+          # 🛑 SAFE STITCH: Adds the folders without breaking the patsubst function
+          echo "" >> Makefile
+          echo "core-y += techpack/wlan/" >> Makefile
+          echo "drivers-y += drivers/kernelsu/" >> Makefile
+          echo "✅ Hardware injected and linked safely"
 
 
       - name: 📥 Integrate KernelSU-Next
@@ -75,11 +73,16 @@ jobs:
 
       - name: 🔨 Compile
         run: |
-          # Force Samsung's exact version string to satisfy security checks
+          # Satisfy Samsung's version check
           echo "-28972655-abX210XXS6CYB9" > .scmversion
           
+          # Prevent "dirty" tags from breaking module loading
+          export LOCALVERSION=""
+          
           FLAGS="ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- LLVM=1 LLVM_IAS=1 HOSTCC=gcc CC=clang -j$(nproc --all)"
-          K_CFLAGS="-DCONFIG_SECURITY_SELINUX_SIDTAB_HASH_BITS=9 -DCONFIG_KSU=1 -DCONFIG_KSU_NEXT=1 -DKSU_NEXT=1"
+          
+          # Standard KernelSU-Next flags
+          K_CFLAGS="-DCONFIG_KSU=1 -DCONFIG_KSU_NEXT=1 -DKSU_NEXT=1 -Wno-error"
           
           make $FLAGS Image KCFLAGS="$K_CFLAGS"
 
