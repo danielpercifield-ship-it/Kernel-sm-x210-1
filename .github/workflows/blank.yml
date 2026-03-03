@@ -68,9 +68,10 @@ jobs:
           mkdir -p drivers/kernelsu/kernel
           cp drivers/kernelsu/ksu.h drivers/kernelsu/kernel/ksu.h || true
           
-          # 🛑 LEGACY 5.4 BACKPORT FIXES (Fixes TWA_RESUME and missing includes)
+          # 🛑 LEGACY 5.4 BACKPORT FIXES (Fixes TWA_RESUME, pgtable, and missing includes)
           sed -i 's/TWA_RESUME/true/g' drivers/kernelsu/allowlist.c || true
           sed -i '1i #include <linux/sched/task.h>' drivers/kernelsu/allowlist.c || true
+          sed -i 's/#include <linux\/pgtable.h>/#include <asm\/pgtable.h>/g' drivers/kernelsu/*.c || true
           
           # 🛑 SECCOMP BYPASS FIXES (Fixes filter_count and mode errors)
           sed -i 's/.*seccomp.filter_count.*/\/\/ filter_count reset/g' drivers/kernelsu/app_profile.c || true
