@@ -63,25 +63,16 @@ jobs:
           sed -i '/#define TRACE_INCLUDE_PATH/c\#define TRACE_INCLUDE_PATH ../../kernel/sched/walt' kernel/sched/walt/trace.h || true
           sed -i 's|register unsigned long current_stack_pointer asm ("sp");|#define current_stack_pointer ({ unsigned long sp; asm("mov %0, sp" : "=r"(sp)); sp; })|g' arch/arm64/include/asm/stack_pointer.h || true
           
-      - name: 8. KERNELSU COMPATIBILITY & SECCOMP FIX
+      - name: 8. KERNELSU COMPATIBILITY & WI-FI BYPASS
         run: |
           mkdir -p drivers/kernelsu/kernel
           cp drivers/kernelsu/ksu.h drivers/kernelsu/kernel/ksu.h || true
           
-          # 🛑 WI-FI MODULE & SENSOR BYPASS (Forces Samsung's drivers to load by ignoring memory map changes)
+          # 🛑 MODULE BYPASS: Forces Wi-Fi and Sensors to load despite the custom kernel
           sed -i 's/return -ENOEXEC;/return 0;/g' kernel/module.c || true
           sed -i 's/same_magic = !strcmp(vermagic, modmagic);/same_magic = 1;/g' kernel/module.c || true
           
-          # 🛑 LEGACY 5.4 BACKPORT FIXES (Global TWA_RESUME, pgtable, strncpy, and copy_user)
-          sed -i 's/TWA_RESUME/true/g' drivers/kernelsu/*.c || true
-          sed -i '1i #include <linux/sched/task.h>' drivers/kernelsu/allowlist.c || true
-          sed -i '1i #include <linux/sched/task.h>' drivers/kernelsu/setuid_hook.c || true
-          sed -i 's/#include <linux\/pgtable.h>/#include <asm\/pgtable.h>/g' drivers/kernelsu/*.c || true
-          sed -i 's/strncpy_from_user_nofault/strncpy_from_unsafe_user/g' drivers/kernelsu/*.c || true
-          sed -i 's/copy_from_user_nofault/copy_from_user/g' drivers/kernelsu/*.c || true
-          sed -i 's/copy_to_user_nofault/copy_to_user/g' drivers/kernelsu/*.c || true
-          
-          # 🛑 FSNOTIFY AND LINKER BYPASS (Provides dummy functions for broken APIs and missing symbols)
+          # 🛑 FSNOTIFY & LINKER DUMMIES: Prevents compile/link errors on 5.4
           echo "void ksu_observer_init(void) {}" > drivers/kernelsu/pkg_observer.c
           echo "void ksu_observer_exit(void) {}" >> drivers/kernelsu/pkg_observer.c
           echo "int security_inode_init_security_anon() { return 0; }" >> drivers/kernelsu/pkg_observer.c
@@ -89,26 +80,18 @@ jobs:
           echo "int path_umount() { return 0; }" >> drivers/kernelsu/pkg_observer.c
           echo "void seccomp_filter_release() {}" >> drivers/kernelsu/pkg_observer.c
           
-          # 🛑 SECCOMP CACHE AND BYPASS FIXES (Fixes filter_count, mode, and syscall definitions)
-          sed -i '1i #include <asm/unistd.h>' drivers/kernelsu/seccomp_cache.c || true
-          sed -i 's/SECCOMP_ARCH_NATIVE_NR/__NR_syscalls/g' drivers/kernelsu/seccomp_cache.c || true
-          sed -i 's/.*seccomp.filter_count.*/\/\/ filter_count reset/g' drivers/kernelsu/app_profile.c || true
-          sed -i 's/if (!!!current->seccomp.mode)/if (0)/g' drivers/kernelsu/app_profile.c || true
-          sed -i 's/.*current->seccomp.mode =.*/\/\/ mode reset/g' drivers/kernelsu/app_profile.c || true
-          sed -i 's/.*current->seccomp.filter =.*/\/\/ filter reset/g' drivers/kernelsu/app_profile.c || true
+          # 🛑 LEGACY 5.4 BACKPORTS
+          sed -i 's/TWA_RESUME/true/g' drivers/kernelsu/*.c || true
+          sed -i 's/#include <linux\/pgtable.h>/#include <asm\/pgtable.h>/g' drivers/kernelsu/*.c || true
+          sed -i 's/strncpy_from_user_nofault/strncpy_from_unsafe_user/g' drivers/kernelsu/*.c || true
+          sed -i 's/copy_from_user_nofault/copy_from_user/g' drivers/kernelsu/*.c || true
+          sed -i 's/copy_to_user_nofault/copy_to_user/g' drivers/kernelsu/*.c || true
           
-          # 🛑 SELINUX STRUCT AND TRANSITION FIXES (Silences the missing 5.4 structs and fixes policy pointers)
+          # 🛑 SELINUX & POLICY FIXES
           sed -i 's/struct selinux_state/struct ksu_selinux_state/g' drivers/kernelsu/selinux/selinux.h || true
           sed -i 's/struct selinux_state/struct ksu_selinux_state/g' drivers/kernelsu/selinux/selinux.c || true
           sed -i 's/struct filename_trans_key key;/return true;\n#if 0/g' drivers/kernelsu/selinux/sepolicy.c || true
-          sed -i 's/return ebitmap_set_bit(&trans->stypes, src->value - 1, 1) == 0;/#endif/g' drivers/kernelsu/selinux/sepolicy.c || true
-          sed -i 's/struct selinux_policy \*policy = selinux_state.policy;//g' drivers/kernelsu/selinux/*.c || true
           sed -i 's/&policy->policydb/\&selinux_state.ss->policydb/g' drivers/kernelsu/selinux/*.c || true
-          
-          # Force Manual Hook bypass in KSU Makefiles
-          sed -i '1i CONFIG_KSU_MANUAL_HOOK := y' drivers/kernelsu/Kbuild || true
-          sed -i '1i CONFIG_KSU_MANUAL_HOOK := y' drivers/kernelsu/Makefile || true
-          sed -i '/No hooks were defined/d' drivers/kernelsu/Kbuild || true
 
       - name: 🔑 Nuclear Export Symbols
         run: |
