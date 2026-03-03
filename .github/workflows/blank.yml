@@ -77,9 +77,9 @@ jobs:
           sed -i 's/copy_from_user_nofault/copy_from_user/g' drivers/kernelsu/*.c || true
           sed -i 's/copy_to_user_nofault/copy_to_user/g' drivers/kernelsu/*.c || true
           
-          # 🛑 FSNOTIFY BYPASS (Bypasses the broken pkg_observer API on 5.4)
-          echo "void ksu_pkg_observer_init(void) {}" > drivers/kernelsu/pkg_observer.c
-          echo "void ksu_pkg_observer_exit(void) {}" >> drivers/kernelsu/pkg_observer.c
+          # 🛑 FSNOTIFY BYPASS (Corrected dummy function names)
+          echo "void ksu_observer_init(void) {}" > drivers/kernelsu/pkg_observer.c
+          echo "void ksu_observer_exit(void) {}" >> drivers/kernelsu/pkg_observer.c
           
           # 🛑 SECCOMP CACHE AND BYPASS FIXES (Fixes filter_count, mode, and syscall definitions)
           sed -i '1i #include <asm/unistd.h>' drivers/kernelsu/seccomp_cache.c || true
