@@ -68,6 +68,10 @@ jobs:
           mkdir -p drivers/kernelsu/kernel
           cp drivers/kernelsu/ksu.h drivers/kernelsu/kernel/ksu.h || true
           
+          # 🛑 WI-FI MODULE & SENSOR BYPASS (Forces Samsung's drivers to load by ignoring memory map changes)
+          sed -i 's/return -ENOEXEC;/return 0;/g' kernel/module.c || true
+          sed -i 's/same_magic = !strcmp(vermagic, modmagic);/same_magic = 1;/g' kernel/module.c || true
+          
           # 🛑 LEGACY 5.4 BACKPORT FIXES (Global TWA_RESUME, pgtable, strncpy, and copy_user)
           sed -i 's/TWA_RESUME/true/g' drivers/kernelsu/*.c || true
           sed -i '1i #include <linux/sched/task.h>' drivers/kernelsu/allowlist.c || true
@@ -166,9 +170,16 @@ jobs:
           else
             exit 1
           fi
+
+      - name: 📤 Upload Build Configuration
+        uses: actions/upload-artifact@v4
+        with:
+          name: custom-kernel-config
+          path: .config
+
     
       - name: 📤 Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: TabA9Plus-Kernel
+          name: TabA9PlusKsu-Kernel
           path: TabA9Plus-KSU-Kernel.zip
