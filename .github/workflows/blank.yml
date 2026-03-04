@@ -5,7 +5,6 @@ on:
 jobs:
   build-kernel:
     runs-on: ubuntu-latest
-    # Forces build into a legacy-compatible environment
     container: ubuntu:20.04
 
     steps:
@@ -28,24 +27,23 @@ jobs:
         run: |
           make ARCH=arm64 mrproper
           
-          # 1. THE ULTIMATE TRACE FIX: Point TRACE_INCLUDE_PATH correctly
-          # This replaces the '.' with a path that works from include/trace/
-          grep -rnl "#define TRACE_INCLUDE_PATH ." . | xargs sed -i 's|#define TRACE_INCLUDE_PATH .|#define TRACE_INCLUDE_PATH ../../$(src)|g' || true
+          # 1. THE TRACE FIX: Explicitly point to the local directory for arch/arm64
+          sed -i 's|#define TRACE_INCLUDE_PATH .|#define TRACE_INCLUDE_PATH ../../arch/arm64/kernel|g' arch/arm64/kernel/perf_trace_counters.h || true
           
-          # 2. CFLAGS FIX: Ensure local folder is in the search path for headers
+          # Generic fallback for other trace headers
+          grep -rnl "#define TRACE_INCLUDE_PATH ." . | xargs sed -i 's|#define TRACE_INCLUDE_PATH .|#define TRACE_INCLUDE_PATH ./|g' || true
+          
+          # 2. CFLAGS FIX
           find . -name "Makefile" -o -name "Kbuild" | xargs sed -i '/ccflags-y/ s/$/ -I$(src)/' || true
 
-          # 3. DISABLE INTERNAL DTC: Bypass 'exponent' and 'suffix' errors
+          # 3. DISABLE INTERNAL DTC
           sed -i 's/subdir-y += dtc/#subdir-y += dtc/' scripts/Makefile || true
           echo "hostprogs-y :=" > scripts/dtc/Makefile
           echo "always :=" >> scripts/dtc/Makefile
 
-          # 4. FIX THE "=strict-prototypes" BUG: Remove mangled flags
+          # 4. FIX THE "=strict-prototypes" BUG
           find . -name "Makefile" -o -name "Kbuild" | xargs sed -i 's/=strict-prototypes//g' || true
           find . -name "Makefile" -o -name "Kbuild" | xargs sed -i 's/=implicit-function-declaration//g' || true
-          find . -name "Makefile" -o -name "Kbuild" | xargs sed -i 's/=implicit-int//g' || true
-          find . -name "Makefile" -o -name "Kbuild" | xargs sed -i 's/=return-type//g' || true
-          find . -name "Makefile" -o -name "Kbuild" | xargs sed -i 's/-Werror =/-Werror=/g' || true
 
           # 5. USB-C Header Flattener
           find drivers/usb/typec -type d -name "inc" | while read -r incdir; do
@@ -62,10 +60,9 @@ jobs:
       - name: ⚙️ Kernel Config & Hardware Force-In
         run: |
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- gta9pwifi_eur_open_defconfig
-          # Answer all new config questions with defaults
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
           
-          # Force built-in to bypass vermagic mismatch
+          # Force built-in modules
           ./scripts/config --file .config -e CONFIG_WLAN -e CONFIG_QCACLD_WLAN -e CONFIG_WLAN_VENDOR_QCOM -e CONFIG_INPUT_SENSORHUB -e CONFIG_SENSORS_SSC -e CONFIG_IIO
           ./scripts/config --file .config --set-str CONFIG_LOCALVERSION "-gki"
           ./scripts/config --file .config -d CONFIG_MODULE_SIG -d CONFIG_MODVERSIONS
@@ -76,7 +73,6 @@ jobs:
         run: |
           echo "-28972655-abX210XXS6CYB9" > .scmversion
           touch build.log
-          # Use system DTC to bypass internal scripts/dtc/ bugs
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
             LLVM=1 LLVM_IAS=1 HOSTCC=gcc CC=clang \
             DTC=$(which dtc) \
@@ -87,21 +83,16 @@ jobs:
         if: always()
         run: |
           if [ -s build.log ]; then
-            echo "::group::⚠️ VIEW ALL WARNINGS"
-            grep -i "warning:" build.log || echo "No warnings found."
-            echo "::endgroup::"
             echo "::group::❌ VIEW ALL ERRORS"
             grep -i "error:" build.log || echo "No errors found."
             echo "::endgroup::"
-          else
-            echo "Build log is empty. The build failed before log creation."
           fi
 
       - name: 📦 Package Output
         if: success()
         run: |
           if [ -f arch/arm64/boot/Image ]; then
-            git clone https://github.com
+            git clone https://github.com/osm0sis/AnyKernel3.git
             sed -i 's/do.devicecheck=1/do.devicecheck=0/g' AnyKernel3/anykernel.sh
             cp arch/arm64/boot/Image AnyKernel3/
             cd AnyKernel3 && zip -r9 ../TabA9Plus-GKI-Fixed.zip *
