@@ -37,7 +37,10 @@ jobs:
 
           # Fix the WALT tracing errors that caused previous crashes
           sed -i "s|#define TRACE_INCLUDE_PATH .*|#define TRACE_INCLUDE_PATH ../../kernel/sched/walt|g" kernel/sched/walt/trace.h || true
-          
+
+          # Fix the deprecated function prototype in zsmalloc
+          sed -i 's/void try_schedule_zs_compact()/void try_schedule_zs_compact(void)/g' mm/zsmalloc.c
+
       - name: ⚙️ Configure Kernel
         run: |
           # Use the config you just uploaded
