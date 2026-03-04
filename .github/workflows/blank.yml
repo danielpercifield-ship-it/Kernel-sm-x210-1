@@ -1,44 +1,43 @@
-name: Build Tab A9+ Standard GKI (WiFi Fixed)
+name: Build Tab A9+ Standard GKI (Legacy Container)
 on:
   workflow_dispatch:
 
 jobs:
   build-kernel:
     runs-on: ubuntu-latest
+    # ⬇️ THIS IS THE MAGIC LINE. It forces the build into an older, compatible OS.
+    container: ubuntu:20.04
 
     steps:
       - name: 🛠️ Prepare Environment
         run: |
-          sudo apt-get update
-          sudo apt-get install -y git bc build-essential flex bison libssl-dev libelf-dev clang llvm lld gcc-aarch64-linux-gnu tar zip wget python3 cpio xz-utils dos2unix curl
-          
+          # Update and install dependencies (No sudo needed, we are root)
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y \
+            git bc build-essential flex bison libssl-dev libelf-dev \
+            clang llvm lld gcc-aarch64-linux-gnu \
+            tar zip wget python3 cpio xz-utils dos2unix curl
+
       - name: 📥 Checkout Kernel Source
         uses: actions/checkout@v4
 
-      - name: 🩹 Apply Deep Source Code Fixes
+      - name: 🩹 Apply Essential Fixes Only
         run: |
-          # 1. CLEAN START: Remove all generated files and old configs
-          make ARCH=arm64 mrproper
-          
-          # 2. FIX FLAG SPLITTING: This catches the "=strict-prototypes" bug by removing the illegal space
-          find . -name "Makefile" -o -name "Kbuild" | xargs sed -i 's/-Werror =/-Werror=/g' || true
-          find . -name "Makefile" -o -name "Kbuild" | xargs sed -i 's/-Werror  =/-Werror=/g' || true
-
-          # 3. FIX DOS LINE ENDINGS: Stops 'unsupported character' warnings
+          # 1. Fix DOS line endings (Standard safety measure)
           find . -type f -name "Kconfig*" -exec dos2unix {} + || true
           
-          # 4. Strip 'q' from version strings
+          # 2. Strip 'q' from version strings
           find . -type f -name "gta9pwifi_eur_open_defconfig" -exec sed -i 's/qgki/gki/g' {} + || true
           sed -i 's/qgki/gki/g' Makefile || true
           
-          # 5. USB-C Header Flattener
+          # 3. USB-C Header Flattener (Still needed for file structure)
           find drivers/usb/typec -type d -name "inc" | while read -r incdir; do
             parent=$(dirname "$incdir")
             cp -r "$incdir"/* "$parent/" || true
           done
           find drivers/usb/typec -type f -exec sed -i 's|#include "inc/|#include "|g' {} +
           
-          # 6. Global -Werror removal (redundancy for WERROR=0)
+          # 4. Remove -Werror (Just to be safe, though 20.04 is more permissive)
           find . -name "Makefile" -o -name "Kbuild" | xargs sed -i 's/-Werror//g' || true
 
       - name: ⚙️ Kernel Config & Hardware Force-In
@@ -46,7 +45,7 @@ jobs:
           # Load the base defconfig
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- gta9pwifi_eur_open_defconfig
           
-          # FORCE BUILT-IN (Fixes WiFi and Vermagic mismatch)
+          # Force built-in modules (WiFi, Sensors)
           ./scripts/config --file .config -e CONFIG_WLAN \
             -e CONFIG_QCACLD_WLAN \
             -e CONFIG_WLAN_VENDOR_QCOM \
@@ -54,20 +53,20 @@ jobs:
             -e CONFIG_SENSORS_SSC \
             -e CONFIG_IIO
           
-          # SET FAKE GKI NAME & DISABLE VERSION CHECKS
+          # Set Fake GKI Name & Disable Version Checks
           ./scripts/config --file .config --set-str CONFIG_LOCALVERSION "-gki"
           ./scripts/config --file .config -d CONFIG_MODULE_SIG -d CONFIG_MODVERSIONS
           
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
 
-      - name: 🔨 Compile
+      - name: 🔨 Compile (Clean & Simple)
         run: |
           echo "-28972655-abX210XXS6CYB9" > .scmversion
           
-          # WERROR=0 is the primary fix to stop warnings from acting as errors
+          # We don't need KCFLAGS hacks or WERROR=0 anymore because 
+          # Ubuntu 20.04's Clang is old enough to accept the code as-is.
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
             LLVM=1 LLVM_IAS=1 HOSTCC=gcc CC=clang \
-            WERROR=0 \
             -j$(nproc --all) Image 2>&1 | tee build.log
 
       - name: 📦 Package Output
@@ -77,9 +76,9 @@ jobs:
             git clone https://github.com
             sed -i 's/do.devicecheck=1/do.devicecheck=0/g' AnyKernel3/anykernel.sh
             cp arch/arm64/boot/Image AnyKernel3/
-            cd AnyKernel3 && zip -r9 ../TabA9Plus-GKI-Pure-Fixed.zip *
+            cd AnyKernel3 && zip -r9 ../TabA9Plus-GKI-Fixed.zip *
           else
-            echo "Error: Kernel Image (arch/arm64/boot/Image) not found!"
+            echo "Error: Kernel Image not found!"
             exit 1
           fi
 
@@ -88,4 +87,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: TabA9Plus-GKI-Fixed
-          path: TabA9Plus-GKI-Pure-Fixed.zip
+          path: TabA9Plus-GKI-Fixed.zip
