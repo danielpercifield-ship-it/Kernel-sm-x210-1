@@ -17,7 +17,7 @@ jobs:
 
       - name: 🔐 Integrate KernelSU
         run: |
-          # v0.9.5 is the "Golden Version" for 5.4 kernels
+          # v0.9.5 is the most stable version for 5.4 kernels
           curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s v0.9.5
 
       - name: 🩹 Apply Source Patches (Compatibility Fixes)
@@ -25,75 +25,33 @@ jobs:
           # 1. Fix the zsmalloc prototype error
           sed -i 's/void try_schedule_zs_compact()/void try_schedule_zs_compact(void)/g' mm/zsmalloc.c
 
-          # 2. THE USB LOOP BREAKER: Rewrite the Makefile from scratch
-          # This removes the recursive loops that cause the 40-minute hang
-          cat <<EOF > drivers/usb/typec/P86801_tcpc/Makefile
-          obj-y += tcpm.o rt_pd_manager.o pd_dpm_core.o pd_dpm_uvdm.o pd_dpm_alt_mode_dc.o
-          obj-y += aw35615/
-          ccflags-y += -I\$(srctree)/drivers/usb/typec/P86801_tcpc/inc
-          EOF
-
-          # 3. Fix the USB-C data pin "lobotomy" (Phantom Stubs)
+          # 2. THE USB FIX: Weak Symbol Stubs (Stops 'Duplicate Symbol' Linker Error)
           mkdir -p drivers/usb/typec/P86801_tcpc/aw35615/
           cat <<EOF > drivers/usb/typec/P86801_tcpc/aw35615/dummy_stubs.c
-          void notify_observers(void) {}
-          int DPM_SpecRev(void) { return 2; }
-          void* DPM_GetSourceCap(void) { return 0; }
-          int DPM_Retries(void) { return 0; }
-          void DPM_Init(void) {}
-          void DPM_AddPort(void) {}
-          void register_observer(void* obs) {}
+          void __attribute__((weak)) notify_observers(void) {}
+          int __attribute__((weak)) DPM_SpecRev(void) { return 2; }
+          void* __attribute__((weak)) DPM_GetSourceCap(void) { return 0; }
+          int __attribute__((weak)) DPM_Retries(void) { return 0; }
+          void __attribute__((weak)) DPM_Init(void) {}
+          void __attribute__((weak)) DPM_AddPort(void) {}
+          void __attribute__((weak)) register_observer(void* obs) {}
           EOF
           echo "obj-y += dummy_stubs.o" > drivers/usb/typec/P86801_tcpc/aw35615/Makefile
-          
-          # Fix the "inc/inc" header trap in the USB driver
-          # This removes the "inc/" prefix so it looks in the current directory
-          find drivers/usb/typec/P86801_tcpc/ -type f -name "*.h" -exec sed -i 's|#include "inc/|#include "|g' {} +
-          find drivers/usb/typec/P86801_tcpc/ -type f -name "*.c" -exec sed -i 's|#include "inc/|#include "|g' {} +
 
-
-          # 4. Fix the WALT tracing errors
+          # 3. Fix the WALT tracing errors (Scheduling)
           sed -i "s|#define TRACE_INCLUDE_PATH .*|#define TRACE_INCLUDE_PATH ../../kernel/sched/walt|g" kernel/sched/walt/trace.h || true
 
-          # 5. Fix missing return type in display driver
+          # 4. Fix missing return type in display driver
           sed -i 's/static inline _dsc_subblk_offset/static inline int _dsc_subblk_offset/g' techpack/display/msm/sde/sde_hw_dsc_1_2.c
 
       - name: ⚙️ Configure Kernel
         run: |
-          # Use your uploaded stock config
+          # Use your uploaded stock blueprint
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- gki_stock_defconfig
           
-          # Spoof the version to match stock modules (Fixes Wi-Fi)
+          # Wi-Fi fix: Match the local version to stock modules
           ./scripts/config --file .config --set-str CONFIG_LOCALVERSION "-qgki"
           ./scripts/config --file .config --enable CONFIG_KSU
           
-          # SPEED FIXES: Disable LTO and CFI to prevent hangs and bootloops
-          ./scripts/config --file .config --disable CONFIG_LTO_CLANG
-          ./scripts/config --file .config --disable CONFIG_THINLTO
-          ./scripts/config --file .config --disable CONFIG_CFI_CLANG
-          
-          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
-
-      - name: 🔨 Compile Kernel (The Master Run)
-        run: |
-          echo "-28972655-abX210XXS6CYB9" > .scmversion
-          
-          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
-          CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm STRIP=llvm-strip \
-          OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump \
-          KCFLAGS="-w -Wno-error=implicit-int -Wno-error=implicit-function-declaration -Wno-error=int-conversion -I$(pwd)/drivers/usb/typec/P86801_tcpc -I$(pwd)/drivers/usb/typec/P86801_tcpc/inc" \
-          -j$(nproc --all) Image
-
-      - name: 📦 Package with AnyKernel3
-        run: |
-          git clone https://github.com/osm0sis/AnyKernel3.git
-          cp arch/arm64/boot/Image AnyKernel3/
-          cd AnyKernel3
-          rm -rf modules/ patch/
-          zip -r9 ../TabA9P-Master-KSU.zip *
-
-      - name: 📤 Upload Result
-        uses: actions/upload-artifact@v4
-        with:
-          name: TabA9P-Master-KSU
-          path: TabA9P-Master-KSU.zip
+          # HANG PREVENTION: Kill LTO and Control Flow Integrity
+          ./scripts/config --file
