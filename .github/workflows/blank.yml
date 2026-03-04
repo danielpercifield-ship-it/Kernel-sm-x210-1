@@ -59,18 +59,13 @@ jobs:
 
       - name: 🔨 Compile
         run: |
-          # This satisfies the hardware check for WiFi/Bluetooth
           echo "-28972655-abX210XXS6CYB9" > .scmversion
           
-          export ARCH=arm64
-          FLAGS="ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- LLVM=1 LLVM_IAS=1 HOSTCC=gcc CC=clang -j$(nproc --all)"
-          
-          # THE NUCLEAR FIX: Use '-w' to suppress all warnings. 
-          # This prevents the 'file not found' crash with compiler flags.
-          K_INC="-I$(pwd)/security/selinux/include -I$(pwd)/drivers"
-          K_CFLAGS="-w -D__LINUX_ARM_ARCH__=8 $K_INC"
-          
-          make $FLAGS Image KCFLAGS="$K_CFLAGS" 2>&1 | tee build.log
+          # Use a simpler flag set. Don't override KCFLAGS unless you're prepared 
+          # to manually include the entire kernel header path tree.
+          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
+            LLVM=1 LLVM_IAS=1 HOSTCC=gcc CC=clang \
+            -j$(nproc --all) Image 2>&1 | tee build.log
 
       - name: 📋 Build Summary
         if: always()
