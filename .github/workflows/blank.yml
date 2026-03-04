@@ -41,6 +41,14 @@ jobs:
           done
           find drivers/usb/typec -type f -exec sed -i 's|#include "inc/|#include "|g' {} +
 
+          # 5. Fix Trace Header paths (Resolves './trace.h' not found)
+           This adds the current source directory to the include path for all trace files
+          find . -name "Makefile" -exec sed -i 's/CFLAGS_trace.o :=/CFLAGS_trace.o := -I$(src)/g' {} + || true
+          
+          # Fix TRACE_INCLUDE_PATH if it's set to '.'
+          # Some drivers hardcode #define TRACE_INCLUDE_PATH . which fails with Clang
+          grep -rnl "#define TRACE_INCLUDE_PATH ." . | xargs sed -i 's/#define TRACE_INCLUDE_PATH ./#define TRACE_INCLUDE_PATH ..\/..\//g' || true
+
       - name: ⚙️ Kernel Config & Hardware Force-In
         run: |
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- gta9pwifi_eur_open_defconfig
