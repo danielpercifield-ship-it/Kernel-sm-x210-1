@@ -25,7 +25,12 @@ jobs:
           # 1. Fix the zsmalloc prototype error
           sed -i 's/void try_schedule_zs_compact()/void try_schedule_zs_compact(void)/g' mm/zsmalloc.c
 
-          # 2. Fix the USB-C data pin "lobotomy" (Clean Makefile Injection)
+          # 2. Fix the USB-C include trap (The Ghost Folder Hack)
+          # We create a nested 'inc' folder so the compiler finds what it's looking for
+          mkdir -p drivers/usb/typec/P86801_tcpc/inc/inc
+          cp drivers/usb/typec/P86801_tcpc/inc/*.h drivers/usb/typec/P86801_tcpc/inc/inc/
+
+          # 3. Fix the USB-C data pin "lobotomy" (Phantom Stubs)
           mkdir -p drivers/usb/typec/P86801_tcpc/aw35615/
           cat <<EOF > drivers/usb/typec/P86801_tcpc/aw35615/dummy_stubs.c
           void notify_observers(void) {}
@@ -36,20 +41,14 @@ jobs:
           void DPM_AddPort(void) {}
           void register_observer(void* obs) {}
           EOF
-          
-          # Tell the compiler where the headers are without moving files
-          echo "ccflags-y += -I\$(srctree)/drivers/usb/typec/P86801_tcpc/inc" > drivers/usb/typec/P86801_tcpc/aw35615/Makefile
           echo "obj-y += dummy_stubs.o" >> drivers/usb/typec/P86801_tcpc/aw35615/Makefile
+          echo "ccflags-y += -I\$(srctree)/drivers/usb/typec/P86801_tcpc/inc" >> drivers/usb/typec/P86801_tcpc/Makefile
 
-          # 3. Fix the WALT tracing errors
+          # 4. Fix the WALT tracing errors
           sed -i "s|#define TRACE_INCLUDE_PATH .*|#define TRACE_INCLUDE_PATH ../../kernel/sched/walt|g" kernel/sched/walt/trace.h || true
 
-          # 4. Fix missing return type in display driver
+          # 5. Fix missing return type in display driver
           sed -i 's/static inline _dsc_subblk_offset/static inline int _dsc_subblk_offset/g' techpack/display/msm/sde/sde_hw_dsc_1_2.c
-
-          # Fix the USB Type-C include trap (Clean Makefile Injection)
-          # This tells the compiler to look in the 'inc' folder specifically for this driver
-          echo "ccflags-y += -I\$(srctree)/drivers/usb/typec/P86801_tcpc/inc" >> drivers/usb/typec/P86801_tcpc/Makefile
 
       - name: ⚙️ Configure Kernel
         run: |
