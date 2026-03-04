@@ -23,36 +23,33 @@ jobs:
 
       - name: 🩹 Apply Deep Source Code Fixes
         run: |
-          # 1. Clean start
           make ARCH=arm64 mrproper
           
-          # 2. DISABLE INTERNAL DTC (The fix for the 'empty variable name' and 'exponent' errors)
-          # We tell the main scripts Makefile to ignore the dtc folder entirely
+          # 1. DISABLE INTERNAL DTC (Prevents 'exponent' and 'suffix' errors)
           sed -i 's/subdir-y += dtc/#subdir-y += dtc/' scripts/Makefile || true
-          # We also clear the dtc Makefile so it doesn't try to run hostprogs
           echo "hostprogs-y :=" > scripts/dtc/Makefile
           echo "always :=" >> scripts/dtc/Makefile
 
-          # 3. FIX TRACE.H
-          # Adds local source to include path so './trace.h' can be found
-          find . -name "Makefile" -o -name "Kbuild" | xargs sed -i '/ccflags-y/ s/$/ -I$(src)/' || true
+          # 2. GLOBAL TRACE FIX (Prevents './trace.h' not found)
+          # We add the local source path to the compiler's search list globally
+          export KCPPFLAGS="-I."
+          find . -name "Makefile" -o -name "Kbuild" | xargs sed -i '/ccflags-y/ s/$/ -I$(src) -I./' || true
           
-          # 4. FIX THE "=strict-prototypes" BUG
-          # Removes the problematic strings that Clang mistakes for files
+          # 3. FIX THE "=strict-prototypes" BUG
           find . -name "Makefile" -o -name "Kbuild" | xargs sed -i 's/=strict-prototypes//g' || true
           find . -name "Makefile" -o -name "Kbuild" | xargs sed -i 's/=implicit-function-declaration//g' || true
           find . -name "Makefile" -o -name "Kbuild" | xargs sed -i 's/=implicit-int//g' || true
           find . -name "Makefile" -o -name "Kbuild" | xargs sed -i 's/=return-type//g' || true
           find . -name "Makefile" -o -name "Kbuild" | xargs sed -i 's/-Werror =/-Werror=/g' || true
 
-          # 5. USB-C Header Flattener
+          # 4. USB-C Header Flattener
           find drivers/usb/typec -type d -name "inc" | while read -r incdir; do
             parent=$(dirname "$incdir")
             cp -r "$incdir"/* "$parent/" || true
           done
           find drivers/usb/typec -type f -exec sed -i 's|#include "inc/|#include "|g' {} +
           
-          # 6. Generic Cleanups & 'q' stripping
+          # 5. Generic Cleanups
           find . -type f -name "Kconfig*" -exec dos2unix {} + || true
           find . -type f -name "gta9pwifi_eur_open_defconfig" -exec sed -i 's/qgki/gki/g' {} + || true
           sed -i 's/qgki/gki/g' Makefile || true
@@ -76,12 +73,12 @@ jobs:
         run: |
           echo "-28972655-abX210XXS6CYB9" > .scmversion
           touch build.log
-          # Point to the system DTC we installed in the Prepare step
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
             LLVM=1 LLVM_IAS=1 HOSTCC=gcc CC=clang \
             DTC=$(which dtc) \
-            WERROR=0 KCFLAGS="-w" \
+            WERROR=0 KCFLAGS="-w -I." \
             -j$(nproc --all) Image 2>&1 | tee build.log
+
 
 
       - name: 📋 Build Summary
