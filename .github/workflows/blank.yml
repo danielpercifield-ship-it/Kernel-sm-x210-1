@@ -5,12 +5,13 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    container: ubuntu:20.04 # This is your compatibility time machine
     steps:
       - name: 🛠️ Setup Build Environment
         run: |
-          sudo apt-get update
-          sudo apt-get install -y git bc build-essential flex bison libssl-dev libelf-dev clang lld llvm gcc-aarch64-linux-gnu curl dos2unix
-          
+          apt-get update
+          apt-get install -y git bc build-essential flex bison libssl-dev libelf-dev clang lld llvm gcc-aarch64-linux-gnu curl dos2unix cpio zip wget
+
       - name: 📥 Checkout Source
         uses: actions/checkout@v4
 
@@ -18,9 +19,12 @@ jobs:
         run: |
           curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s main
 
-      - name: 🩹 Apply Source Patches (USB & Trace Fixes)
+      - name: 🩹 Apply Source Patches (Compatibility Fixes)
         run: |
-          # Fix the USB-C lobotomy (Phantom Stubs v2)
+          # 1. Fix the zsmalloc prototype error (the one you just hit)
+          sed -i 's/void try_schedule_zs_compact()/void try_schedule_zs_compact(void)/g' mm/zsmalloc.c
+
+          # 2. Fix the USB-C data pin "lobotomy" (Phantom Stubs)
           mkdir -p drivers/usb/typec/P86801_tcpc/aw35615/
           cat <<EOF > drivers/usb/typec/P86801_tcpc/aw35615/dummy_stubs.c
           void notify_observers(void) {}
@@ -31,31 +35,28 @@ jobs:
           void DPM_AddPort(void) {}
           void register_observer(void* obs) {}
           EOF
-          
-          # Inject stubs into Makefile
           echo "obj-y += dummy_stubs.o" >> drivers/usb/typec/P86801_tcpc/aw35615/Makefile
 
-          # Fix the WALT tracing errors that caused previous crashes
+          # 3. Fix the WALT tracing errors
           sed -i "s|#define TRACE_INCLUDE_PATH .*|#define TRACE_INCLUDE_PATH ../../kernel/sched/walt|g" kernel/sched/walt/trace.h || true
-
-          # Fix the deprecated function prototype in zsmalloc
-          sed -i 's/void try_schedule_zs_compact()/void try_schedule_zs_compact(void)/g' mm/zsmalloc.c
 
       - name: ⚙️ Configure Kernel
         run: |
-          # Use the config you just uploaded
+          # Use the stock config you uploaded
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- gki_stock_defconfig
           
-          # Force the GKI and KSU flags
+          # Spoof the version to match stock modules for Wi-Fi
           ./scripts/config --file .config --set-str CONFIG_LOCALVERSION "-qgki"
           ./scripts/config --file .config --enable CONFIG_KSU
+          
+          # Disable the strict security checks that cause bootloops
           ./scripts/config --file .config --disable CONFIG_CFI_CLANG
           
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
 
       - name: 🔨 Compile Kernel (The Master Run)
         run: |
-          # This string MUST match your stock dmesg exactly
+          # This ID must match your tablet's stock modules exactly
           echo "-28972655-abX210XXS6CYB9" > .scmversion
           
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
@@ -68,7 +69,7 @@ jobs:
           git clone https://github.com/osm0sis/AnyKernel3.git
           cp arch/arm64/boot/Image AnyKernel3/
           cd AnyKernel3
-          # Clean up any old modules
+          # Clean up any generic template files
           rm -rf modules/ patch/
           zip -r9 ../TabA9P-Master-KSU.zip *
 
