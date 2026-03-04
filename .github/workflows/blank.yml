@@ -11,37 +11,39 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y git bc build-essential flex bison libssl-dev libelf-dev clang llvm lld gcc-aarch64-linux-gnu tar zip wget python3 cpio xz-utils dos2unix curl
-          
+
       - name: 📥 Checkout Kernel Source
         uses: actions/checkout@v4
 
       - name: 🩹 Apply Deep Source Code Fixes
         run: |
-          # 1. Strip 'q' from version strings everywhere
+          # 1. Fix DOS line endings (This fixes the 'unsupported character' warnings in your logs)
+          find . -type f -name "Kconfig*" -exec dos2unix {} + || true
+          
+          # 2. Strip 'q' from version strings
           find . -type f -name "gta9pwifi_eur_open_defconfig" -exec sed -i 's/qgki/gki/g' {} + || true
           sed -i 's/qgki/gki/g' Makefile || true
           
-          # 2. USB-C Header Flattener (Fixes 'inc/tcpci.h' not found)
+          # 3. USB-C Header Flattener
           find drivers/usb/typec -type d -name "inc" | while read -r incdir; do
             parent=$(dirname "$incdir")
             cp -r "$incdir"/* "$parent/" || true
           done
           find drivers/usb/typec -type f -exec sed -i 's|#include "inc/|#include "|g' {} +
           
-          # 3. Fix Minidump and Display syntax errors (The 'int' and '_' errors)
+          # 4. Fix Minidump and Display syntax
           sed -i 's/static md_dump_slabinfo/static int md_dump_slabinfo/g' drivers/soc/qcom/minidump_log.c || true
           sed -i 's/static md_align_offset/static int md_align_offset/g' drivers/soc/qcom/minidump_log.c || true
           find techpack/display -name "*.c" -exec sed -i 's/static inline _/static inline u32 _/g' {} + || true
 
-          # 4. Nuclear Makefile cleanup: remove -Werror from all folders
+          # 5. Remove -Werror globally (This is the proper way to ignore warnings)
           find . -name "Makefile" -o -name "Kbuild" | xargs sed -i 's/-Werror//g' || true
 
       - name: ⚙️ Kernel Config & Hardware Force-In
         run: |
-          # Load base config
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- gta9pwifi_eur_open_defconfig
           
-          # Force WiFi & Sensors to be built-in (y) instead of modules (m)
+          # Force modules to be BUILT-IN (y) to avoid vermagic mismatch
           ./scripts/config --file .config -e CONFIG_WLAN \
             -e CONFIG_QCACLD_WLAN \
             -e CONFIG_WLAN_VENDOR_QCOM \
@@ -49,10 +51,10 @@ jobs:
             -e CONFIG_SENSORS_SSC \
             -e CONFIG_IIO
           
-          # Strip the 'q' and set GKI name
+          # Set the fake GKI name
           ./scripts/config --file .config --set-str CONFIG_LOCALVERSION "-gki"
           
-          # Disable version/signature checks so it doesn't reject system modules
+          # Nuclear option for GKI faking: Disable module version/sig checks
           ./scripts/config --file .config -d CONFIG_MODULE_SIG -d CONFIG_MODVERSIONS
           
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
@@ -61,7 +63,7 @@ jobs:
         run: |
           echo "-28972655-abX210XXS6CYB9" > .scmversion
           
-          # Clean build flags: remove KCFLAGS to stop the '=strict-prototypes' error
+          # FIXED: Removed KCFLAGS to stop the '=strict-prototypes' error
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
             LLVM=1 LLVM_IAS=1 HOSTCC=gcc CC=clang \
             -j$(nproc --all) Image 2>&1 | tee build.log
@@ -80,12 +82,12 @@ jobs:
         if: success()
         run: |
           if [ -f arch/arm64/boot/Image ]; then
-            git clone https://github.com/osm0sis/AnyKernel3.git
+            git clone https://github.com
             sed -i 's/do.devicecheck=1/do.devicecheck=0/g' AnyKernel3/anykernel.sh
             cp arch/arm64/boot/Image AnyKernel3/
             cd AnyKernel3 && zip -r9 ../TabA9Plus-GKI-Pure-Fixed.zip *
           else
-            echo "Error: Kernel Image (arch/arm64/boot/Image) not found!"
+            echo "Error: Kernel Image not found!"
             exit 1
           fi
 
