@@ -51,16 +51,19 @@ jobs:
 
       - name: ⚙️ Configure Kernel
         run: |
-          # Use the stock config you uploaded
+          # 1. Load your stock blueprint
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- gki_stock_defconfig
           
-          # Spoof the version to match stock modules for Wi-Fi
+          # 2. Apply your custom "ID" and Features
           ./scripts/config --file .config --set-str CONFIG_LOCALVERSION "-qgki"
           ./scripts/config --file .config --enable CONFIG_KSU
           
-          # Disable the strict security checks that cause bootloops
+          # 3. THE SPEED FIX: Kill LTO (Prevents the 20-minute "hang")
+          ./scripts/config --file .config --disable CONFIG_LTO_CLANG
+          ./scripts/config --file .config --disable CONFIG_THINLTO
           ./scripts/config --file .config --disable CONFIG_CFI_CLANG
           
+          # 4. Lock in the changes
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
 
       - name: 🔨 Compile Kernel (The Master Run)
