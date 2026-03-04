@@ -24,9 +24,14 @@ jobs:
           # 1. Clean start
           make ARCH=arm64 mrproper
           
-          # 2. FIX TRACE.H (This solves the './trace.h' fatal error)
-          # We force the trace include path to look in the local driver directory
-          find . -name "*.h" -exec sed -i 's|#define TRACE_INCLUDE_PATH .|#define TRACE_INCLUDE_PATH ../../|g' {} + || true
+          # 2. FIX TRACE.H (The correct way)
+          # Instead of changing the header files, we add the current directory 
+          # to the include path for any file that handles tracing.
+          find . -name "Makefile" -o -name "Kbuild" | xargs sed -i 's|CFLAGS_$(obj)/|#|g' || true
+          find . -name "Makefile" -o -name "Kbuild" | xargs sed -i '/ccflags-y/ s/$/ -I$(src)/' || true
+          
+          # Revert the previous broken header sed (if it's still in your code)
+          find . -name "*.h" -exec sed -i 's|../../||g' {} + || true
           
           # 3. FIX THE "=strict-prototypes" BUG
           # Deleting these specific strings prevents Clang from thinking they are files
