@@ -10,13 +10,14 @@ jobs:
     steps:
       - name: 🛠️ Prepare Environment
         run: |
+          apt-get install -y device-tree-compiler
+          
           apt-get update
           DEBIAN_FRONTEND=noninteractive apt-get install -y \
             git bc build-essential flex bison libssl-dev libelf-dev \
             clang llvm lld gcc-aarch64-linux-gnu \
-            tar zip wget python3 cpio xz-utils dos2unix curl \
-            device-tree-compiler
-
+            tar zip wget python3 cpio xz-utils dos2unix curl
+            
       - name: 📥 Checkout Kernel Source
         uses: actions/checkout@v4
 
@@ -55,6 +56,12 @@ jobs:
           sed -i 's/qgki/gki/g' Makefile || true
 
           sed -i 's/subdir-y += dtc/#subdir-y += dtc/' scripts/Makefile || true
+          # Force the kernel to NOT build its own DTC
+          sed -i 's/hostprogs-y += dtc/hostprogs-y -= dtc/' scripts/dtc/Makefile || true
+          sed -i 's/dtc-objs/ /g' scripts/dtc/Makefile || true
+
+          # Fix the specific syntax error in the DTC header just in case something else calls it
+          sed -i 's/0x[0-9a-fA-F]*L/0/g' scripts/dtc/dtc.h || true
 
 
       - name: ⚙️ Kernel Config & Hardware Force-In
@@ -70,10 +77,11 @@ jobs:
           echo "-28972655-abX210XXS6CYB9" > .scmversion
           touch build.log
           
-          # We add DTC=dtc to bypass the broken internal scripts/dtc/
+          # Force the use of the system DTC and skip the local one
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
             LLVM=1 LLVM_IAS=1 HOSTCC=gcc CC=clang \
-            WERROR=0 KCFLAGS="-w" DTC=dtc \
+            DTC_EXT=$(which dtc) DTC=$(which dtc) \
+            WERROR=0 KCFLAGS="-w" \
             -j$(nproc --all) Image 2>&1 | tee build.log
 
 
