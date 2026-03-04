@@ -27,15 +27,16 @@ jobs:
         run: |
           make ARCH=arm64 mrproper
           
-          # 1. SURGICAL TRACE FIXES (Solves './trace.h' and path mangling errors)
-          # Fix for WALT scheduler tracing
+          # 1. PRECISE TRACE FIXES (Corrects the "race" typo and pathing)
+          # We target the exact WALT trace file to ensure no letters are dropped
           sed -i 's|#define TRACE_INCLUDE_PATH .*|#define TRACE_INCLUDE_PATH ../../kernel/sched/walt|g' kernel/sched/walt/trace.h || true
           
-          # Fix for perf counters tracing
+          # Fix for perf counters
           sed -i 's|#define TRACE_INCLUDE_PATH .*|#define TRACE_INCLUDE_PATH ../../arch/arm64/kernel|g' arch/arm64/kernel/perf_trace_counters.h || true
           
-          # Global safety fallback: Force any relative '.' to be local
-          grep -rnl "#define TRACE_INCLUDE_PATH ." . | xargs sed -i 's|#define TRACE_INCLUDE_PATH .|#define TRACE_INCLUDE_PATH ./|g' || true
+          # Global fix for other files: only replace if it is exactly "#define TRACE_INCLUDE_PATH ."
+          # This prevents "trace" from becoming "race" in existing paths
+          grep -rnl "#define TRACE_INCLUDE_PATH ." . | xargs sed -i 's|#define TRACE_INCLUDE_PATH \.|#define TRACE_INCLUDE_PATH ./|g' || true
           
           # 2. CFLAGS & HEADER FIXES
           find . -name "Makefile" -o -name "Kbuild" | xargs sed -i '/ccflags-y/ s/$/ -I$(src)/' || true
