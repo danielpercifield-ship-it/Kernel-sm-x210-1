@@ -17,88 +17,69 @@ jobs:
 
       - name: 🩹 Apply Deep Source Code Fixes
         run: |
-          # 🛑 FIX: Strip 'q' from GKI (Force standard GKI identity)
+          # 1. Strip 'q' from version strings in all files
           find . -type f -name "gta9pwifi_eur_open_defconfig" -exec sed -i 's/qgki/gki/g' {} + || true
           sed -i 's/qgki/gki/g' Makefile || true
           
-          # 🛑 FIX: USB-C Header Flattener (The "TCPCI.H" Fix)
-          # This copies nested headers to parent folders so the compile succeeds
+          # 2. USB-C Header Flattener (Essential for successful compile)
           find drivers/usb/typec -type d -name "inc" | while read -r incdir; do
             parent=$(dirname "$incdir")
             cp -r "$incdir"/* "$parent/" || true
           done
           find drivers/usb/typec -type f -exec sed -i 's|#include "inc/|#include "|g' {} +
           
-          # 🛑 FIX: WALT TRACING Path
-          sed -i 's|#define TRACE_INCLUDE_PATH .|#define TRACE_INCLUDE_PATH ../../kernel/sched/walt|g' kernel/sched/walt/trace.h || true
-          
-          # 🛑 FIX: ZSMALLOC Prototypes
-          sed -i 's/void try_schedule_zs_compact()/void try_schedule_zs_compact(void)/g' mm/zsmalloc.c || true
-
-          # 🛑 FIX: Samsung Display Syntax
-          find techpack/display -name "*.c" -exec sed -i 's/static inline _/static inline u32 _/g' {} + || true
-          
-          # 🛑 FIX: Module Bypass (Forces WiFi drivers to load even if version is slightly off)
-          sed -i 's/return -ENOEXEC;/return 0;/g' kernel/module.c || true
-          sed -i 's/same_magic = !strcmp(vermagic, modmagic);/same_magic = 1;/g' kernel/module.c || true
-
-          # 🛑 FIX: Minidump implicit int
+          # 3. Fix Minidump and Display syntax errors
           sed -i 's/static md_dump_slabinfo/static int md_dump_slabinfo/g' drivers/soc/qcom/minidump_log.c || true
           sed -i 's/static md_align_offset/static int md_align_offset/g' drivers/soc/qcom/minidump_log.c || true
+          find techpack/display -name "*.c" -exec sed -i 's/static inline _/static inline u32 _/g' {} + || true
 
-          # THE "NUCLEAR" FIX: Clear -Werror from all folder levels
+          # 4. Nuclear Makefile fix: remove all local -Werror rules
           find . -name "Makefile" -o -name "Kbuild" | xargs sed -i 's/-Werror//g' || true
 
       - name: ⚙️ Kernel Config & Hardware Force-In
         run: |
+          # Load the base config
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- gta9pwifi_eur_open_defconfig
           
-          # 📡 Force WiFi and Sensors to be Built-in (y)
+          # FORCE WIFI TO BE BUILT-IN (Fixes WiFi not working after name change)
           ./scripts/config --file .config --set-val CONFIG_WLAN y
           ./scripts/config --file .config --set-val CONFIG_QCACLD_WLAN y
+          ./scripts/config --file .config --set-val CONFIG_WLAN_VENDOR_QCOM y
+          
+          # FORCE ROTATION & SENSORS TO BE BUILT-IN
           ./scripts/config --file .config --set-val CONFIG_INPUT_SENSORHUB y
           ./scripts/config --file .config --set-val CONFIG_SENSORS_SSC y
           ./scripts/config --file .config --set-val CONFIG_IIO y
           
-          # 🆔 The Clean Identity
+          # SET THE NEW NAME (Removing the 'q')
           ./scripts/config --file .config --set-str CONFIG_LOCALVERSION "-gki"
           
+          # Apply changes
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
 
       - name: 🔨 Compile
         run: |
-          # Matches the stock Samsung version fingerprint but uses the -gki suffix
-          echo "-28972655-abX210XXS6CYB9" > .scmversion
+          # Matches the stock fingerprint but with your -gki name
+          echo "-gki" > .scmversion
           
           export ARCH=arm64
           FLAGS="ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- LLVM=1 LLVM_IAS=1 HOSTCC=gcc CC=clang -j$(nproc --all)"
           
-          # Correctly define Includes (Even without KSU, the techpack needs these)
-          K_INC="-I$(pwd)/security/selinux/include -I$(pwd)/drivers"
-          
-          # Use the Nuclear '-w' to bypass "ret set but not used" and "implicit int"
-          K_CFLAGS="-w -D__LINUX_ARM_ARCH__=8 $K_INC"
+          # Use -w to ignore all messy Samsung warnings so build finishes
+          K_CFLAGS="-w -D__LINUX_ARM_ARCH__=8 -I$(pwd)/security/selinux/include -I$(pwd)/drivers"
           
           make $FLAGS Image KCFLAGS="$K_CFLAGS" 2>&1 | tee build.log
-
-      - name: 📋 Build Summary
-        if: always()
-        run: |
-          echo "::group::⚠️ VIEW ALL WARNINGS"
-          grep -i "warning:" build.log || echo "No warnings found."
-          echo "::endgroup::"
-          echo "::group::❌ VIEW ALL ERRORS"
-          grep -i "error:" build.log || echo "No errors found."
-          echo "::endgroup::"
 
       - name: 📦 Package Output
         if: success()
         run: |
           if [ -f arch/arm64/boot/Image ]; then
             git clone https://github.com/osm0sis/AnyKernel3.git
+            sed -i 's/do.devicecheck=1/do.devicecheck=0/g' AnyKernel3/anykernel.sh
             cp arch/arm64/boot/Image AnyKernel3/
-            cd AnyKernel3 && zip -r9 ../TabA9Plus-GKI-Pure.zip *
+            cd AnyKernel3 && zip -r9 ../TabA9Plus-GKI-Fixed.zip *
           else
+            echo "Error: Kernel Image not found!"
             exit 1
           fi
 
@@ -106,5 +87,5 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: TabA9Plus-GKI-Pure
-          path: TabA9Plus-GKI-Pure.zip
+          name: TabA9Plus-GKI-Fixed
+          path: TabA9Plus-GKI-Fixed.zip
