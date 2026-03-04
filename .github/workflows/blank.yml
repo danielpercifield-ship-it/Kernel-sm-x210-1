@@ -5,7 +5,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    container: ubuntu:20.04 # This is your compatibility time machine
+    container: ubuntu:20.04
     steps:
       - name: 🛠️ Setup Build Environment
         run: |
@@ -17,7 +17,7 @@ jobs:
 
       - name: 🔐 Integrate KernelSU
         run: |
-          # Use a specific version (v0.9.5) instead of 'main' to avoid 5.10+ code conflicts
+          # v0.9.5 is the "Golden Version" for 5.4 kernels
           curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s v0.9.5
 
       - name: 🩹 Apply Source Patches (Compatibility Fixes)
@@ -25,7 +25,7 @@ jobs:
           # 1. Fix the zsmalloc prototype error
           sed -i 's/void try_schedule_zs_compact()/void try_schedule_zs_compact(void)/g' mm/zsmalloc.c
 
-          # 2. Fix the USB-C data pin "lobotomy" (Phantom Stubs)
+          # 2. Fix the USB-C data pin "lobotomy" (Clean Makefile Injection)
           mkdir -p drivers/usb/typec/P86801_tcpc/aw35615/
           cat <<EOF > drivers/usb/typec/P86801_tcpc/aw35615/dummy_stubs.c
           void notify_observers(void) {}
@@ -36,53 +36,49 @@ jobs:
           void DPM_AddPort(void) {}
           void register_observer(void* obs) {}
           EOF
+          
+          # Tell the compiler where the headers are without moving files
+          echo "ccflags-y += -I\$(srctree)/drivers/usb/typec/P86801_tcpc/inc" > drivers/usb/typec/P86801_tcpc/aw35615/Makefile
           echo "obj-y += dummy_stubs.o" >> drivers/usb/typec/P86801_tcpc/aw35615/Makefile
 
-          # 3. Fix the USB Type-C include trap (Flattener v2)
-          find drivers/usb/typec -type f -name "*.h" -exec sed -i 's|#include "inc/|#include "|g' {} +
-          find drivers/usb/typec -type f -name "*.c" -exec sed -i 's|#include "inc/|#include "|g' {} +
-          cp drivers/usb/typec/P86801_tcpc/inc/*.h drivers/usb/typec/P86801_tcpc/ || true
-
-          # 4. Fix the WALT tracing errors
+          # 3. Fix the WALT tracing errors
           sed -i "s|#define TRACE_INCLUDE_PATH .*|#define TRACE_INCLUDE_PATH ../../kernel/sched/walt|g" kernel/sched/walt/trace.h || true
 
-          # 5. Fix missing return type in display driver
+          # 4. Fix missing return type in display driver
           sed -i 's/static inline _dsc_subblk_offset/static inline int _dsc_subblk_offset/g' techpack/display/msm/sde/sde_hw_dsc_1_2.c
 
       - name: ⚙️ Configure Kernel
         run: |
-          # 1. Load your stock blueprint
+          # Use your uploaded stock config
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- gki_stock_defconfig
           
-          # 2. Apply your custom "ID" and Features
+          # Spoof the version to match stock modules (Fixes Wi-Fi)
           ./scripts/config --file .config --set-str CONFIG_LOCALVERSION "-qgki"
           ./scripts/config --file .config --enable CONFIG_KSU
           
-          # 3. THE SPEED FIX: Kill LTO (Prevents the 20-minute "hang")
+          # SPEED FIXES: Disable LTO and CFI to prevent hangs and bootloops
           ./scripts/config --file .config --disable CONFIG_LTO_CLANG
           ./scripts/config --file .config --disable CONFIG_THINLTO
           ./scripts/config --file .config --disable CONFIG_CFI_CLANG
           
-          # 4. Lock in the changes
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
 
       - name: 🔨 Compile Kernel (The Master Run)
         run: |
+          # This ID must match your tablet's stock modules exactly
           echo "-28972655-abX210XXS6CYB9" > .scmversion
           
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
           CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm STRIP=llvm-strip \
           OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump \
-          KCFLAGS="-w -Wno-error=implicit-int -Wno-error=implicit-function-declaration -Wno-error=int-conversion -Wno-unused-function -I$(pwd)/drivers/usb/typec/P86801_tcpc" \
+          KCFLAGS="-w -Wno-error=implicit-int -Wno-error=implicit-function-declaration -Wno-error=int-conversion -I$(pwd)/drivers/usb/typec/P86801_tcpc/inc" \
           -j$(nproc --all) Image
-
 
       - name: 📦 Package with AnyKernel3
         run: |
           git clone https://github.com/osm0sis/AnyKernel3.git
           cp arch/arm64/boot/Image AnyKernel3/
           cd AnyKernel3
-          # Clean up any generic template files
           rm -rf modules/ patch/
           zip -r9 ../TabA9P-Master-KSU.zip *
 
