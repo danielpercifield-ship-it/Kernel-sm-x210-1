@@ -45,6 +45,12 @@ jobs:
           void register_observer(void* obs) {}
           EOF
           echo "obj-y += dummy_stubs.o" > drivers/usb/typec/P86801_tcpc/aw35615/Makefile
+          
+          # Fix the "inc/inc" header trap in the USB driver
+          # This removes the "inc/" prefix so it looks in the current directory
+          find drivers/usb/typec/P86801_tcpc/ -type f -name "*.h" -exec sed -i 's|#include "inc/|#include "|g' {} +
+          find drivers/usb/typec/P86801_tcpc/ -type f -name "*.c" -exec sed -i 's|#include "inc/|#include "|g' {} +
+
 
           # 4. Fix the WALT tracing errors
           sed -i "s|#define TRACE_INCLUDE_PATH .*|#define TRACE_INCLUDE_PATH ../../kernel/sched/walt|g" kernel/sched/walt/trace.h || true
@@ -75,7 +81,7 @@ jobs:
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
           CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm STRIP=llvm-strip \
           OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump \
-          KCFLAGS="-w -Wno-error=implicit-int -Wno-error=implicit-function-declaration -Wno-error=int-conversion -I$(pwd)/drivers/usb/typec/P86801_tcpc/inc" \
+          KCFLAGS="-w -Wno-error=implicit-int -Wno-error=implicit-function-declaration -Wno-error=int-conversion -I$(pwd)/drivers/usb/typec/P86801_tcpc -I$(pwd)/drivers/usb/typec/P86801_tcpc/inc" \
           -j$(nproc --all) Image
 
       - name: 📦 Package with AnyKernel3
