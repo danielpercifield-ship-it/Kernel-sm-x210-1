@@ -38,23 +38,23 @@ jobs:
 
       - name: ⚙️ Kernel Config & Hardware Force-In
         run: |
-          # Load the base defconfig
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- gta9pwifi_eur_open_defconfig
           
-          # FORCE WIFI TO BE BUILT-IN (Fixes WiFi failing after name change)
-          ./scripts/config --file .config --set-val CONFIG_WLAN y
-          ./scripts/config --file .config --set-val CONFIG_QCACLD_WLAN y
-          ./scripts/config --file .config --set-val CONFIG_WLAN_VENDOR_QCOM y
+          # Disable Module versions first, then Force Built-in (y)
+          ./scripts/config --file .config -d CONFIG_WLAN_VENDOR_QCOM -e CONFIG_WLAN_VENDOR_QCOM
+          ./scripts/config --file .config -d CONFIG_QCACLD_WLAN -e CONFIG_QCACLD_WLAN
+          ./scripts/config --file .config -e CONFIG_WLAN
           
-          # FORCE ROTATION & SENSORS TO BE BUILT-IN (Fixes Sensor Hub)
-          ./scripts/config --file .config --set-val CONFIG_INPUT_SENSORHUB y
-          ./scripts/config --file .config --set-val CONFIG_SENSORS_SSC y
-          ./scripts/config --file .config --set-val CONFIG_IIO y
+          # Force Sensors/IIO
+          ./scripts/config --file .config -e CONFIG_INPUT_SENSORHUB -e CONFIG_SENSORS_SSC -e CONFIG_IIO
           
-          # SET THE NEW NAME (Removing the 'q')
+          # Set the GKI name
           ./scripts/config --file .config --set-str CONFIG_LOCALVERSION "-gki"
           
-          # Apply the changes
+          # Crucial for faking GKI: Disable module signature/versioning check 
+          # so it doesn't reject existing system modules
+          ./scripts/config --file .config -d CONFIG_MODULE_SIG -d CONFIG_MODVERSIONS
+          
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
 
       - name: 🔨 Compile
