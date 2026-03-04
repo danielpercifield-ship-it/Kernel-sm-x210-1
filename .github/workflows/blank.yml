@@ -26,61 +26,60 @@ jobs:
           # 1. Clean start
           make ARCH=arm64 mrproper
           
-          # 2. FIX TRACE.H (The correct way)
-          # Instead of changing the header files, we add the current directory 
-          # to the include path for any file that handles tracing.
-          find . -name "Makefile" -o -name "Kbuild" | xargs sed -i 's|CFLAGS_$(obj)/|#|g' || true
+          # 2. DISABLE INTERNAL DTC (The fix for the 'empty variable name' and 'exponent' errors)
+          # We tell the main scripts Makefile to ignore the dtc folder entirely
+          sed -i 's/subdir-y += dtc/#subdir-y += dtc/' scripts/Makefile || true
+          # We also clear the dtc Makefile so it doesn't try to run hostprogs
+          echo "hostprogs-y :=" > scripts/dtc/Makefile
+          echo "always :=" >> scripts/dtc/Makefile
+
+          # 3. FIX TRACE.H
+          # Adds local source to include path so './trace.h' can be found
           find . -name "Makefile" -o -name "Kbuild" | xargs sed -i '/ccflags-y/ s/$/ -I$(src)/' || true
           
-          # Revert the previous broken header sed (if it's still in your code)
-          find . -name "*.h" -exec sed -i 's|../../||g' {} + || true
-          
-          # 3. FIX THE "=strict-prototypes" BUG
-          # Deleting these specific strings prevents Clang from thinking they are files
+          # 4. FIX THE "=strict-prototypes" BUG
+          # Removes the problematic strings that Clang mistakes for files
           find . -name "Makefile" -o -name "Kbuild" | xargs sed -i 's/=strict-prototypes//g' || true
           find . -name "Makefile" -o -name "Kbuild" | xargs sed -i 's/=implicit-function-declaration//g' || true
           find . -name "Makefile" -o -name "Kbuild" | xargs sed -i 's/=implicit-int//g' || true
           find . -name "Makefile" -o -name "Kbuild" | xargs sed -i 's/=return-type//g' || true
           find . -name "Makefile" -o -name "Kbuild" | xargs sed -i 's/-Werror =/-Werror=/g' || true
 
-          # 4. USB-C Header Flattener
+          # 5. USB-C Header Flattener
           find drivers/usb/typec -type d -name "inc" | while read -r incdir; do
             parent=$(dirname "$incdir")
             cp -r "$incdir"/* "$parent/" || true
           done
           find drivers/usb/typec -type f -exec sed -i 's|#include "inc/|#include "|g' {} +
           
-          # 5. Generic Cleanups
+          # 6. Generic Cleanups & 'q' stripping
           find . -type f -name "Kconfig*" -exec dos2unix {} + || true
           find . -type f -name "gta9pwifi_eur_open_defconfig" -exec sed -i 's/qgki/gki/g' {} + || true
           sed -i 's/qgki/gki/g' Makefile || true
 
-          sed -i 's/subdir-y += dtc/#subdir-y += dtc/' scripts/Makefile || true
-          # Force the kernel to NOT build its own DTC
-          sed -i 's/hostprogs-y += dtc/hostprogs-y -= dtc/' scripts/dtc/Makefile || true
-          sed -i 's/dtc-objs/ /g' scripts/dtc/Makefile || true
-
-          # Fix the specific syntax error in the DTC header just in case something else calls it
-          sed -i 's/0x[0-9a-fA-F]*L/0/g' scripts/dtc/dtc.h || true
-
-
       - name: ⚙️ Kernel Config & Hardware Force-In
         run: |
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- gta9pwifi_eur_open_defconfig
-          ./scripts/config --file .config -e CONFIG_WLAN -e CONFIG_QCACLD_WLAN -e CONFIG_WLAN_VENDOR_QCOM -e CONFIG_INPUT_SENSORHUB -e CONFIG_SENSORS_SSC -e CONFIG_IIO
+          
+          # Use olddefconfig to automatically answer "YES" to all those stalling questions
+          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
+          
+          ./scripts/config --file .config -e CONFIG_WLAN -e CONFIG_QCACLD_WLAN -e CONFIG_WLAN_VENDOR_QCOM
           ./scripts/config --file .config --set-str CONFIG_LOCALVERSION "-gki"
           ./scripts/config --file .config -d CONFIG_MODULE_SIG -d CONFIG_MODVERSIONS
+          
+          # Final sync
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
+
 
       - name: 🔨 Compile
         run: |
           echo "-28972655-abX210XXS6CYB9" > .scmversion
           touch build.log
-          
-          # Force the use of the system DTC and skip the local one
+          # Point to the system DTC we installed in the Prepare step
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
             LLVM=1 LLVM_IAS=1 HOSTCC=gcc CC=clang \
-            DTC_EXT=$(which dtc) DTC=$(which dtc) \
+            DTC=$(which dtc) \
             WERROR=0 KCFLAGS="-w" \
             -j$(nproc --all) Image 2>&1 | tee build.log
 
