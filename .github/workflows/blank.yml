@@ -50,11 +50,11 @@ jobs:
           done
           find drivers/usb/typec -type f -exec sed -i "s|#include \"inc/|#include \"|g" {} +
           
-          # 6. MAKEFILE NUKE AND PAVE & PROPRIETARY STUBS
+          # 6. MAKEFILE NUKE AND PAVE & ISOLATED DUMMY BLOB
+          # Note: Removed the global Makefile dos2unix to protect the techpack video drivers
           find . -type f -name "Kconfig*" -exec dos2unix {} + || true
-          find . -type f -name "Makefile" -exec dos2unix {} + || true
-          find . -type f -name "Kbuild" -exec dos2unix {} + || true
           
+          # Generate a clean Makefile
           echo "ccflags-y += -I\$(src) -I\$(src)/.." > drivers/usb/typec/P86801_tcpc/aw35615/Makefile
           for f in drivers/usb/typec/P86801_tcpc/aw35615/*.c; do
             if [ -f "$f" ]; then
@@ -65,14 +65,17 @@ jobs:
             fi
           done
           
-          # Inject Phantom Stubs to satisfy the Linker for the missing Samsung DPM blob
-          echo "void notify_observers(void) {}" >> drivers/usb/typec/P86801_tcpc/aw35615/platform_helpers.c
-          echo "int DPM_SpecRev(void) { return 2; }" >> drivers/usb/typec/P86801_tcpc/aw35615/platform_helpers.c
-          echo "void* DPM_GetSourceCap(void) { return 0; }" >> drivers/usb/typec/P86801_tcpc/aw35615/platform_helpers.c
-          echo "int DPM_Retries(void) { return 0; }" >> drivers/usb/typec/P86801_tcpc/aw35615/platform_helpers.c
-          echo "void DPM_Init(void) {}" >> drivers/usb/typec/P86801_tcpc/aw35615/platform_helpers.c
-          echo "void DPM_AddPort(void) {}" >> drivers/usb/typec/P86801_tcpc/aw35615/platform_helpers.c
-          echo "void register_observer(void) {}" >> drivers/usb/typec/P86801_tcpc/aw35615/platform_helpers.c
+          # Create a standalone dummy file so the compiler doesn't see the conflicting headers
+          echo "void notify_observers() {}" > drivers/usb/typec/P86801_tcpc/aw35615/dummy_blob.c
+          echo "int DPM_SpecRev() { return 2; }" >> drivers/usb/typec/P86801_tcpc/aw35615/dummy_blob.c
+          echo "void* DPM_GetSourceCap() { return 0; }" >> drivers/usb/typec/P86801_tcpc/aw35615/dummy_blob.c
+          echo "int DPM_Retries() { return 0; }" >> drivers/usb/typec/P86801_tcpc/aw35615/dummy_blob.c
+          echo "void DPM_Init() {}" >> drivers/usb/typec/P86801_tcpc/aw35615/dummy_blob.c
+          echo "void DPM_AddPort() {}" >> drivers/usb/typec/P86801_tcpc/aw35615/dummy_blob.c
+          echo "void register_observer() {}" >> drivers/usb/typec/P86801_tcpc/aw35615/dummy_blob.c
+          
+          # Tell the Makefile to compile our new dummy blob
+          echo "obj-y += dummy_blob.o" >> drivers/usb/typec/P86801_tcpc/aw35615/Makefile
           
           find . -type f -name "gta9pwifi_eur_open_defconfig" -exec sed -i "s/qgki/gki/g" {} + || true
           sed -i "s/qgki/gki/g" Makefile || true
