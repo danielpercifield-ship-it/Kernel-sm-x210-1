@@ -21,36 +21,35 @@ jobs:
      
       - name: 🩹 Apply Deep Source Code Fixes
         run: |
-          # 🛑 FIX: PGTABLE HEADER (Solves the 'linux/pgtable.h' not found error)
+          # 🛑 FIX: KSU Pkg Observer (Solves 'handle_inode_event' error)
+          sed -i 's/handle_inode_event/handle_event/g' drivers/kernelsu/pkg_observer.c || true
+          
+          # 🛑 FIX: Samsung Display Syntax (Solves 'type specifier missing' error)
+          sed -i 's/static inline _/static inline u32 _/g' techpack/display/msm/sde/sde_hw_dsc_1_2.c || true
+          
+          # 🛑 FIX: PGTABLE & TWA_RESUME
           sed -i 's/<linux\/pgtable.h>/<asm\/pgtable.h>/g' drivers/kernelsu/*.c || true
-          
-          # 🛑 FIX: TWA_RESUME and SECCOMP for 5.4 kernels
           sed -i 's/TWA_RESUME/true/g' drivers/kernelsu/*.c || true
-          sed -i 's/atomic_set(&current->seccomp.filter_count, 0);/\/\/ filter_count bypass/g' drivers/kernelsu/app_profile.c || true
-          sed -i 's/current->seccomp.mode = 0;/\/\/ mode bypass/g' drivers/kernelsu/app_profile.c || true
           
-          # 🛑 FIX: WALT Trace and zsmalloc
+          # 🛑 FIX: SECCOMP & WALT Trace
+          sed -i 's/atomic_set(&current->seccomp.filter_count, 0);/\/\/ filter_count bypass/g' drivers/kernelsu/app_profile.c || true
           sed -i 's|#define TRACE_INCLUDE_PATH .|#define TRACE_INCLUDE_PATH ../../kernel/sched/walt|g' kernel/sched/walt/trace.h || true
           sed -i 's/void try_schedule_zs_compact()/void try_schedule_zs_compact(void)/g' mm/zsmalloc.c || true
           
-          # 🛑 FIX: Module Bypass for Samsung
+          # 🛑 FIX: Module Bypass
           sed -i 's/return -ENOEXEC;/return 0;/g' kernel/module.c || true
           sed -i 's/same_magic = !strcmp(vermagic, modmagic);/same_magic = 1;/g' kernel/module.c || true
 
       - name: ⚙️ Kernel Config & Hardware Force-In
         run: |
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- gta9pwifi_eur_open_defconfig
-          
-          # Force WiFi and Sensors Built-in
           ./scripts/config --file .config --enable CONFIG_WLAN
           ./scripts/config --file .config --set-val CONFIG_QCACLD_WLAN y
           ./scripts/config --file .config --enable CONFIG_INPUT_SENSORHUB
           ./scripts/config --file .config --enable CONFIG_SENSORS_SSC
-          
           ./scripts/config --file .config --enable CONFIG_KSU
           ./scripts/config --file .config --enable CONFIG_KSU_NEXT
           ./scripts/config --file .config --set-str CONFIG_LOCALVERSION "-everything-works"
-          
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
 
       - name: 🔨 Compile
@@ -59,8 +58,6 @@ jobs:
           export LOCALVERSION=""
           FLAGS="ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- LLVM=1 LLVM_IAS=1 HOSTCC=gcc CC=clang -j$(nproc --all)"
           K_CFLAGS="-DCONFIG_KSU=1 -DCONFIG_KSU_NEXT=1 -DKSU_NEXT=1 -Wno-error -Wno-strict-prototypes -Wno-implicit-function-declaration"
-          
-          # Pipe output to a log file so we can summarize it later
           make $FLAGS Image KCFLAGS="$K_CFLAGS" 2>&1 | tee build.log
 
       - name: 📋 Build Summary (Errors & Warnings)
@@ -69,7 +66,6 @@ jobs:
           echo "::group::⚠️ VIEW ALL WARNINGS"
           grep -i "warning:" build.log || echo "No warnings found."
           echo "::endgroup::"
-          
           echo "::group::❌ VIEW ALL ERRORS"
           grep -i "error:" build.log || echo "No errors found."
           echo "::endgroup::"
