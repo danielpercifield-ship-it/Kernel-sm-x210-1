@@ -50,14 +50,18 @@ jobs:
           done
           find drivers/usb/typec -type f -exec sed -i 's|#include "inc/|#include "|g' {} +
           
-          # 6. WINDOWS CRLF CLEANUP & 'q' BRANDING (Solves "recipe commences before first target")
-          # Scrubbing all Makefiles and Kconfigs of invisible Windows formatting
+          # 6. MAKEFILE "NUKE AND PAVE" & 'q' STRIPPING
           find . -type f -name "Kconfig*" -exec dos2unix {} + || true
           find . -type f -name "Makefile" -exec dos2unix {} + || true
           find . -type f -name "Kbuild" -exec dos2unix {} + || true
           
-          # Just in case there is a stray tab on line 2 of that specific broken Makefile, we delete it
-          sed -i '2s/^\t*//' drivers/usb/typec/P86801_tcpc/aw35615/Makefile || true
+          # Delete the broken Samsung Makefile and generate a clean one
+          echo "# Auto-generated clean Makefile" > drivers/usb/typec/P86801_tcpc/aw35615/Makefile
+          for f in drivers/usb/typec/P86801_tcpc/aw35615/*.c; do
+            if [ -f "$f" ]; then
+              echo "obj-y += $(basename "$f" .c).o" >> drivers/usb/typec/P86801_tcpc/aw35615/Makefile
+            fi
+          done
           
           find . -type f -name "gta9pwifi_eur_open_defconfig" -exec sed -i 's/qgki/gki/g' {} + || true
           sed -i 's/qgki/gki/g' Makefile || true
