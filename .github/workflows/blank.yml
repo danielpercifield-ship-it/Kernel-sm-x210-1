@@ -21,33 +21,32 @@ jobs:
 
       - name: 🩹 Apply Deep Source Code Fixes
         run: |
-          # 1. THE NUCLEAR FIX: Delete the broken flags from EVERY file in the source
-          # We don't just replace them; we delete them so Clang never sees them.
-          grep -rE "=strict-prototypes|=implicit-function-declaration|=implicit-int|=return-type|=unknown-warning-option" . | cut -d: -f1 | sort -u | xargs sed -i 's/=strict-prototypes//g; s/=implicit-function-declaration//g; s/=implicit-int//g; s/=return-type//g; s/=unknown-warning-option//g' || true
+          # 1. Clean start
+          make ARCH=arm64 mrproper
           
-          # 2. Fix the space-after-Werror bug in all Makefiles/Kbuilds
+          # 2. FIX TRACE.H (This solves the './trace.h' fatal error)
+          # We force the trace include path to look in the local driver directory
+          find . -name "*.h" -exec sed -i 's|#define TRACE_INCLUDE_PATH .|#define TRACE_INCLUDE_PATH ../../|g' {} + || true
+          
+          # 3. FIX THE "=strict-prototypes" BUG
+          # Deleting these specific strings prevents Clang from thinking they are files
+          find . -name "Makefile" -o -name "Kbuild" | xargs sed -i 's/=strict-prototypes//g' || true
+          find . -name "Makefile" -o -name "Kbuild" | xargs sed -i 's/=implicit-function-declaration//g' || true
+          find . -name "Makefile" -o -name "Kbuild" | xargs sed -i 's/=implicit-int//g' || true
+          find . -name "Makefile" -o -name "Kbuild" | xargs sed -i 's/=return-type//g' || true
           find . -name "Makefile" -o -name "Kbuild" | xargs sed -i 's/-Werror =/-Werror=/g' || true
-          find . -name "Makefile" -o -name "Kbuild" | xargs sed -i 's/-Werror /-Werror/g' || true
 
-          # 3. Fix line endings and Strip 'q'
-          find . -type f -name "Kconfig*" -exec dos2unix {} + || true
-          find . -type f -name "gta9pwifi_eur_open_defconfig" -exec sed -i 's/qgki/gki/g' {} + || true
-          sed -i 's/qgki/gki/g' Makefile || true
-          
           # 4. USB-C Header Flattener
           find drivers/usb/typec -type d -name "inc" | while read -r incdir; do
             parent=$(dirname "$incdir")
             cp -r "$incdir"/* "$parent/" || true
           done
           find drivers/usb/typec -type f -exec sed -i 's|#include "inc/|#include "|g' {} +
-
-          # 5. Fix Trace Header paths (Resolves './trace.h' not found)
-           This adds the current source directory to the include path for all trace files
-          find . -name "Makefile" -exec sed -i 's/CFLAGS_trace.o :=/CFLAGS_trace.o := -I$(src)/g' {} + || true
           
-          # Fix TRACE_INCLUDE_PATH if it's set to '.'
-          # Some drivers hardcode #define TRACE_INCLUDE_PATH . which fails with Clang
-          grep -rnl "#define TRACE_INCLUDE_PATH ." . | xargs sed -i 's/#define TRACE_INCLUDE_PATH ./#define TRACE_INCLUDE_PATH ..\/..\//g' || true
+          # 5. Generic Cleanups
+          find . -type f -name "Kconfig*" -exec dos2unix {} + || true
+          find . -type f -name "gta9pwifi_eur_open_defconfig" -exec sed -i 's/qgki/gki/g' {} + || true
+          sed -i 's/qgki/gki/g' Makefile || true
 
       - name: ⚙️ Kernel Config & Hardware Force-In
         run: |
@@ -60,7 +59,8 @@ jobs:
       - name: 🔨 Compile
         run: |
           echo "-28972655-abX210XXS6CYB9" > .scmversion
-          # Use WERROR=0 and -w as a double-shield
+          # Ensure build.log exists even if make fails immediately
+          touch build.log
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
             LLVM=1 LLVM_IAS=1 HOSTCC=gcc CC=clang \
             WERROR=0 KCFLAGS="-w" \
@@ -69,12 +69,17 @@ jobs:
       - name: 📋 Build Summary
         if: always()
         run: |
-          echo "::group::⚠️ VIEW ALL WARNINGS"
-          grep -i "warning:" build.log || echo "No warnings found."
-          echo "::endgroup::"
-          echo "::group::❌ VIEW ALL ERRORS"
-          grep -i "error:" build.log || echo "No errors found."
-          echo "::endgroup::"
+          # Use -s to check if file exists and has size
+          if [ -s build.log ]; then
+            echo "::group::⚠️ VIEW ALL WARNINGS"
+            grep -i "warning:" build.log || echo "No warnings found."
+            echo "::endgroup::"
+            echo "::group::❌ VIEW ALL ERRORS"
+            grep -i "error:" build.log || echo "No errors found."
+            echo "::endgroup::"
+          else
+            echo "Build log is empty. The build failed before starting."
+          fi
 
       - name: 📦 Package Output
         if: success()
