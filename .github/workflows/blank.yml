@@ -50,12 +50,19 @@ jobs:
           done
           find drivers/usb/typec -type f -exec sed -i 's|#include "inc/|#include "|g' {} +
           
-          # 6. STRIP 'q' BRANDING
+          # 6. WINDOWS CRLF CLEANUP & 'q' BRANDING (Solves "recipe commences before first target")
+          # Scrubbing all Makefiles and Kconfigs of invisible Windows formatting
+          find . -type f -name "Kconfig*" -exec dos2unix {} + || true
+          find . -type f -name "Makefile" -exec dos2unix {} + || true
+          find . -type f -name "Kbuild" -exec dos2unix {} + || true
+          
+          # Just in case there is a stray tab on line 2 of that specific broken Makefile, we delete it
+          sed -i '2s/^\t*//' drivers/usb/typec/P86801_tcpc/aw35615/Makefile || true
+          
           find . -type f -name "gta9pwifi_eur_open_defconfig" -exec sed -i 's/qgki/gki/g' {} + || true
           sed -i 's/qgki/gki/g' Makefile || true
 
           # 7. 🛑 FOCALTECH TOUCHSCREEN FIRMWARE FIX
-          # Create empty dummy files to satisfy the missing firmware includes
           mkdir -p drivers/input/touchscreen/focaltech_touch_spi/include/firmware
           touch drivers/input/touchscreen/focaltech_touch_spi/include/firmware/fw_sample.i
           mkdir -p include/firmware
