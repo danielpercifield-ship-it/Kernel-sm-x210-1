@@ -38,21 +38,21 @@ jobs:
 
       - name: ⚙️ Kernel Config & Hardware Force-In
         run: |
+          # Load base config
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- gta9pwifi_eur_open_defconfig
           
-          # Disable Module versions first, then Force Built-in (y)
-          ./scripts/config --file .config -d CONFIG_WLAN_VENDOR_QCOM -e CONFIG_WLAN_VENDOR_QCOM
-          ./scripts/config --file .config -d CONFIG_QCACLD_WLAN -e CONFIG_QCACLD_WLAN
-          ./scripts/config --file .config -e CONFIG_WLAN
+          # Force WiFi & Sensors to be built-in (y) instead of modules (m)
+          ./scripts/config --file .config -e CONFIG_WLAN \
+            -e CONFIG_QCACLD_WLAN \
+            -e CONFIG_WLAN_VENDOR_QCOM \
+            -e CONFIG_INPUT_SENSORHUB \
+            -e CONFIG_SENSORS_SSC \
+            -e CONFIG_IIO
           
-          # Force Sensors/IIO
-          ./scripts/config --file .config -e CONFIG_INPUT_SENSORHUB -e CONFIG_SENSORS_SSC -e CONFIG_IIO
-          
-          # Set the GKI name
+          # Strip the 'q' and set GKI name
           ./scripts/config --file .config --set-str CONFIG_LOCALVERSION "-gki"
           
-          # Crucial for faking GKI: Disable module signature/versioning check 
-          # so it doesn't reject existing system modules
+          # Disable version/signature checks so it doesn't reject system modules
           ./scripts/config --file .config -d CONFIG_MODULE_SIG -d CONFIG_MODVERSIONS
           
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
@@ -61,8 +61,7 @@ jobs:
         run: |
           echo "-28972655-abX210XXS6CYB9" > .scmversion
           
-          # Use a simpler flag set. Don't override KCFLAGS unless you're prepared 
-          # to manually include the entire kernel header path tree.
+          # Clean build flags: remove KCFLAGS to stop the '=strict-prototypes' error
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
             LLVM=1 LLVM_IAS=1 HOSTCC=gcc CC=clang \
             -j$(nproc --all) Image 2>&1 | tee build.log
