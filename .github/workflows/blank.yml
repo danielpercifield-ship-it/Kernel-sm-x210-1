@@ -31,31 +31,27 @@ jobs:
           sed -i "s|#define TRACE_INCLUDE_PATH .*|#define TRACE_INCLUDE_PATH ../../kernel/sched/walt|g" kernel/sched/walt/trace.h || true
           sed -i "s|#define TRACE_INCLUDE_PATH .*|#define TRACE_INCLUDE_PATH ../../arch/arm64/kernel|g" arch/arm64/kernel/perf_trace_counters.h || true
           grep -rnl "#define TRACE_INCLUDE_PATH \." . | xargs sed -i "s|#define TRACE_INCLUDE_PATH \.|#define TRACE_INCLUDE_PATH ./|g" || true
-          
-          # 2. CFLAGS AND HEADER FIXES
-          find . -name "Makefile" -o -name "Kbuild" | xargs sed -i "/ccflags-y/ s/$/ -I\$(src)\//" || true
 
-          # 3. DISABLE INTERNAL DTC 
+          # 2. DISABLE INTERNAL DTC (Bypass internal scripts/dtc errors)
           sed -i "s/subdir-y += dtc/#subdir-y += dtc/" scripts/Makefile || true
           echo "hostprogs-y :=" > scripts/dtc/Makefile
           echo "always :=" >> scripts/dtc/Makefile
 
-          # 4. REMOVE STRICT PROTOTYPE FLAGS
+          # 3. REMOVE STRICT PROTOTYPE FLAGS
           find . -name "Makefile" -o -name "Kbuild" | xargs sed -i "s/=strict-prototypes//g" || true
           
-          # 5. USB-C HEADER FLATTENER
+          # 4. USB-C HEADER FLATTENER
           find drivers/usb/typec -type d -name "inc" | while read -r incdir; do
             parent=$(dirname "$incdir")
             cp -r "$incdir"/* "$parent/" || true
           done
           find drivers/usb/typec -type f -exec sed -i "s|#include \"inc/|#include \"|g" {} +
           
-          # 6. MAKEFILE NUKE AND PAVE (Excluding broken backup files)
+          # 5. MAKEFILE NUKE AND PAVE
           find . -type f -name "Kconfig*" -exec dos2unix {} + || true
           find . -type f -name "Makefile" -exec dos2unix {} + || true
           find . -type f -name "Kbuild" -exec dos2unix {} + || true
           
-          # Generate a clean Makefile but explicitly ignore the broken tcpm.c file
           echo "ccflags-y += -I\$(src) -I\$(src)/.." > drivers/usb/typec/P86801_tcpc/aw35615/Makefile
           for f in drivers/usb/typec/P86801_tcpc/aw35615/*.c; do
             if [ -f "$f" ]; then
@@ -69,7 +65,7 @@ jobs:
           find . -type f -name "gta9pwifi_eur_open_defconfig" -exec sed -i "s/qgki/gki/g" {} + || true
           sed -i "s/qgki/gki/g" Makefile || true
 
-          # 7. FOCALTECH TOUCHSCREEN FIRMWARE FIX
+          # 6. FOCALTECH TOUCHSCREEN FIRMWARE FIX
           mkdir -p drivers/input/touchscreen/focaltech_touch_spi/include/firmware
           touch drivers/input/touchscreen/focaltech_touch_spi/include/firmware/fw_sample.i
           mkdir -p include/firmware
@@ -100,10 +96,17 @@ jobs:
         if: always()
         run: |
           if [ -s build.log ]; then
-            echo "::group::❌ VIEW ALL ERRORS"
-            grep -i "error:" build.log || echo "No errors found."
+            echo "::group::❌ VIEW ALL ERRORS AND LINKER FAILURES"
+            grep -i -E "error:|undefined reference|ld:" build.log || echo "No explicit errors found in log."
             echo "::endgroup::"
           fi
+
+      - name: 📤 Upload Build Log (For Debugging)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Full-Build-Log
+          path: build.log
 
       - name: 📦 Package Output
         if: success()
@@ -114,6 +117,7 @@ jobs:
             cp arch/arm64/boot/Image AnyKernel3/
             cd AnyKernel3 && zip -r9 ../TabA9Plus-GKI-Fixed.zip *
           else
+            echo "Build finished but Image file not found. Check the uploaded build.log."
             exit 1
           fi
 
