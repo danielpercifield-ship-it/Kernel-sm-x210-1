@@ -9,14 +9,14 @@ jobs:
 
     steps:
       - name: 🛠️ Prepare Environment
-        run: |
-          apt-get install -y device-tree-compiler
-          
+        run: |   
           apt-get update
           DEBIAN_FRONTEND=noninteractive apt-get install -y \
             git bc build-essential flex bison libssl-dev libelf-dev \
             clang llvm lld gcc-aarch64-linux-gnu \
             tar zip wget python3 cpio xz-utils dos2unix curl
+
+            apt-get install -y device-tree-compiler
             
       - name: 📥 Checkout Kernel Source
         uses: actions/checkout@v4
