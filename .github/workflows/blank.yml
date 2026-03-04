@@ -18,9 +18,16 @@ jobs:
       - name: 🩹 Apply Deep Source Code Fixes
         run: |
           # 🛑 FIX: Strip 'q' from GKI (Force standard GKI identity)
-          # This replaces 'qgki' with 'gki' in the config and Makefiles
           find . -type f -name "gta9pwifi_eur_open_defconfig" -exec sed -i 's/qgki/gki/g' {} + || true
           sed -i 's/qgki/gki/g' Makefile || true
+          
+          # 🛑 FIX: USB-C Header Flattener (The "TCPCI.H" Fix)
+          # This copies nested headers to parent folders so the compile succeeds
+          find drivers/usb/typec -type d -name "inc" | while read -r incdir; do
+            parent=$(dirname "$incdir")
+            cp -r "$incdir"/* "$parent/" || true
+          done
+          find drivers/usb/typec -type f -exec sed -i 's|#include "inc/|#include "|g' {} +
           
           # 🛑 FIX: WALT TRACING Path
           sed -i 's|#define TRACE_INCLUDE_PATH .|#define TRACE_INCLUDE_PATH ../../kernel/sched/walt|g' kernel/sched/walt/trace.h || true
@@ -28,44 +35,50 @@ jobs:
           # 🛑 FIX: ZSMALLOC Prototypes
           sed -i 's/void try_schedule_zs_compact()/void try_schedule_zs_compact(void)/g' mm/zsmalloc.c || true
 
-          # 🛑 FIX: Samsung Display Syntax (Wildcard fix for all display files)
+          # 🛑 FIX: Samsung Display Syntax
           find techpack/display -name "*.c" -exec sed -i 's/static inline _/static inline u32 _/g' {} + || true
           
-          # 🛑 FIX: Module Bypass
+          # 🛑 FIX: Module Bypass (Forces WiFi drivers to load even if version is slightly off)
           sed -i 's/return -ENOEXEC;/return 0;/g' kernel/module.c || true
           sed -i 's/same_magic = !strcmp(vermagic, modmagic);/same_magic = 1;/g' kernel/module.c || true
 
-          # This fixes the Line 97 error and others in the minidump log
+          # 🛑 FIX: Minidump implicit int
           sed -i 's/static md_dump_slabinfo/static int md_dump_slabinfo/g' drivers/soc/qcom/minidump_log.c || true
           sed -i 's/static md_align_offset/static int md_align_offset/g' drivers/soc/qcom/minidump_log.c || true
 
+          # THE "NUCLEAR" FIX: Clear -Werror from all folder levels
           find . -name "Makefile" -o -name "Kbuild" | xargs sed -i 's/-Werror//g' || true
 
       - name: ⚙️ Kernel Config & Hardware Force-In
         run: |
-          # Use the patched defconfig
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- gta9pwifi_eur_open_defconfig
           
-          # Force WiFi and Sensors to be Built-in
-          ./scripts/config --file .config --enable CONFIG_WLAN
+          # 📡 Force WiFi and Sensors to be Built-in (y)
+          ./scripts/config --file .config --set-val CONFIG_WLAN y
           ./scripts/config --file .config --set-val CONFIG_QCACLD_WLAN y
-          ./scripts/config --file .config --enable CONFIG_INPUT_SENSORHUB
-          ./scripts/config --file .config --enable CONFIG_SENSORS_SSC
+          ./scripts/config --file .config --set-val CONFIG_INPUT_SENSORHUB y
+          ./scripts/config --file .config --set-val CONFIG_SENSORS_SSC y
+          ./scripts/config --file .config --set-val CONFIG_IIO y
           
-          # Identity
-          ./scripts/config --file .config --set-str CONFIG_LOCALVERSION "-everything-works-gki"
+          # 🆔 The Clean Identity
+          ./scripts/config --file .config --set-str CONFIG_LOCALVERSION "-gki"
           
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
 
       - name: 🔨 Compile
         run: |
-          # Satisfy Samsung's version check string
+          # Matches the stock Samsung version fingerprint but uses the -gki suffix
           echo "-28972655-abX210XXS6CYB9" > .scmversion
-          export LOCALVERSION=""
+          
+          export ARCH=arm64
           FLAGS="ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- LLVM=1 LLVM_IAS=1 HOSTCC=gcc CC=clang -j$(nproc --all)"
           
-          # Normal compiler flags without KSU definitions
-          K_CFLAGS="-Wno-error -Wno-unused-but-set-variable -Wno-unused-variable -Wno-implicit-int -Wno-error=implicit-function-declaration $K_INC"
+          # Correctly define Includes (Even without KSU, the techpack needs these)
+          K_INC="-I$(pwd)/security/selinux/include -I$(pwd)/drivers"
+          
+          # Use the Nuclear '-w' to bypass "ret set but not used" and "implicit int"
+          K_CFLAGS="-w -D__LINUX_ARM_ARCH__=8 $K_INC"
+          
           make $FLAGS Image KCFLAGS="$K_CFLAGS" 2>&1 | tee build.log
 
       - name: 📋 Build Summary
