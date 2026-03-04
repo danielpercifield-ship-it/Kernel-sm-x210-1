@@ -54,4 +54,33 @@ jobs:
           ./scripts/config --file .config --enable CONFIG_KSU
           
           # HANG PREVENTION: Kill LTO and Control Flow Integrity
-          ./scripts/config --file
+          ./scripts/config --file .config --disable CONFIG_LTO_CLANG
+          ./scripts/config --file .config --disable CONFIG_THINLTO
+          ./scripts/config --file .config --disable CONFIG_CFI_CLANG
+          
+          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
+
+      - name: 🔨 Compile Kernel (The Master Run)
+        run: |
+          # Match the stock module SCM ID
+          echo "-28972655-abX210XXS6CYB9" > .scmversion
+          
+          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
+          CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm STRIP=llvm-strip \
+          OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump \
+          KCFLAGS="-w -Wno-error=implicit-int -Wno-error=implicit-function-declaration -Wno-error=int-conversion -I$(pwd)/drivers/usb/typec/P86801_tcpc/inc" \
+          -j$(nproc --all) Image
+
+      - name: 📦 Package with AnyKernel3
+        run: |
+          git clone https://github.com/osm0sis/AnyKernel3.git
+          cp arch/arm64/boot/Image AnyKernel3/
+          cd AnyKernel3
+          rm -rf modules/ patch/
+          zip -r9 ../TabA9P-Master-KSU.zip *
+
+      - name: 📤 Upload Result
+        uses: actions/upload-artifact@v4
+        with:
+          name: TabA9P-Master-KSU
+          path: TabA9P-Master-KSU.zip
