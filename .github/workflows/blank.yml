@@ -54,6 +54,9 @@ jobs:
           find . -type f -name "gta9pwifi_eur_open_defconfig" -exec sed -i 's/qgki/gki/g' {} + || true
           sed -i 's/qgki/gki/g' Makefile || true
 
+          sed -i 's/subdir-y += dtc/#subdir-y += dtc/' scripts/Makefile || true
+
+
       - name: ⚙️ Kernel Config & Hardware Force-In
         run: |
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- gta9pwifi_eur_open_defconfig
