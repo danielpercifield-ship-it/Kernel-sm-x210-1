@@ -47,6 +47,10 @@ jobs:
           # 4. Fix missing return type in display driver
           sed -i 's/static inline _dsc_subblk_offset/static inline int _dsc_subblk_offset/g' techpack/display/msm/sde/sde_hw_dsc_1_2.c
 
+          # Fix the USB Type-C include trap (Clean Makefile Injection)
+          # This tells the compiler to look in the 'inc' folder specifically for this driver
+          echo "ccflags-y += -I\$(srctree)/drivers/usb/typec/P86801_tcpc/inc" >> drivers/usb/typec/P86801_tcpc/Makefile
+
       - name: ⚙️ Configure Kernel
         run: |
           # Use your uploaded stock config
@@ -65,7 +69,6 @@ jobs:
 
       - name: 🔨 Compile Kernel (The Master Run)
         run: |
-          # This ID must match your tablet's stock modules exactly
           echo "-28972655-abX210XXS6CYB9" > .scmversion
           
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
