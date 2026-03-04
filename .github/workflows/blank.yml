@@ -31,41 +31,36 @@ jobs:
           sed -i "s|#define TRACE_INCLUDE_PATH .*|#define TRACE_INCLUDE_PATH ../../kernel/sched/walt|g" kernel/sched/walt/trace.h || true
           sed -i "s|#define TRACE_INCLUDE_PATH .*|#define TRACE_INCLUDE_PATH ../../arch/arm64/kernel|g" arch/arm64/kernel/perf_trace_counters.h || true
           grep -rnl "#define TRACE_INCLUDE_PATH \." . | xargs sed -i "s|#define TRACE_INCLUDE_PATH \.|#define TRACE_INCLUDE_PATH ./|g" || true
-          
-          # 2. CFLAGS AND HEADER FIXES
-          find . -name "Makefile" -o -name "Kbuild" | xargs sed -i "/ccflags-y/ s/$/ -I\$(src)\//" || true
+
+          # 2. WINDOWS LINE ENDING FIX (CRITICAL FOR TECHPACK MAKEFILES)
+          find . -type f -name "Kconfig*" -exec dos2unix {} + || true
+          find . -type f -name "Makefile" -exec dos2unix {} + || true
+          find . -type f -name "Kbuild" -exec dos2unix {} + || true
 
           # 3. DISABLE INTERNAL DTC 
           sed -i "s/subdir-y += dtc/#subdir-y += dtc/" scripts/Makefile || true
           echo "hostprogs-y :=" > scripts/dtc/Makefile
           echo "always :=" >> scripts/dtc/Makefile
-
-          # 4. REMOVE STRICT PROTOTYPE FLAGS
-          find . -name "Makefile" -o -name "Kbuild" | xargs sed -i "s/=strict-prototypes//g" || true
           
-          # 5. USB-C HEADER FLATTENER
+          # 4. USB-C HEADER FLATTENER
           find drivers/usb/typec -type d -name "inc" | while read -r incdir; do
             parent=$(dirname "$incdir")
             cp -r "$incdir"/* "$parent/" || true
           done
           find drivers/usb/typec -type f -exec sed -i "s|#include \"inc/|#include \"|g" {} +
           
-          # 6. MAKEFILE NUKE AND PAVE & ISOLATED DUMMY BLOB
-          # Note: Removed the global Makefile dos2unix to protect the techpack video drivers
-          find . -type f -name "Kconfig*" -exec dos2unix {} + || true
-          
-          # Generate a clean Makefile
+          # 5. MAKEFILE NUKE AND PAVE & ISOLATED DUMMY BLOB
           echo "ccflags-y += -I\$(src) -I\$(src)/.." > drivers/usb/typec/P86801_tcpc/aw35615/Makefile
           for f in drivers/usb/typec/P86801_tcpc/aw35615/*.c; do
             if [ -f "$f" ]; then
               name=$(basename "$f" .c)
-              if [ "$name" != "tcpm" ]; then
+              if [ "$name" != "tcpm" ] && [ "$name" != "dummy_blob" ]; then
                 echo "obj-y += ${name}.o" >> drivers/usb/typec/P86801_tcpc/aw35615/Makefile
               fi
             fi
           done
           
-          # Create a standalone dummy file so the compiler doesn't see the conflicting headers
+          # Create an isolated dummy file so the compiler doesn't check the strict headers
           echo "void notify_observers() {}" > drivers/usb/typec/P86801_tcpc/aw35615/dummy_blob.c
           echo "int DPM_SpecRev() { return 2; }" >> drivers/usb/typec/P86801_tcpc/aw35615/dummy_blob.c
           echo "void* DPM_GetSourceCap() { return 0; }" >> drivers/usb/typec/P86801_tcpc/aw35615/dummy_blob.c
@@ -74,9 +69,10 @@ jobs:
           echo "void DPM_AddPort() {}" >> drivers/usb/typec/P86801_tcpc/aw35615/dummy_blob.c
           echo "void register_observer() {}" >> drivers/usb/typec/P86801_tcpc/aw35615/dummy_blob.c
           
-          # Tell the Makefile to compile our new dummy blob
+          # Tell the generated Makefile to compile our new dummy blob
           echo "obj-y += dummy_blob.o" >> drivers/usb/typec/P86801_tcpc/aw35615/Makefile
           
+          # 6. GKI BRANDING
           find . -type f -name "gta9pwifi_eur_open_defconfig" -exec sed -i "s/qgki/gki/g" {} + || true
           sed -i "s/qgki/gki/g" Makefile || true
 
