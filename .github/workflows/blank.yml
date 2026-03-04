@@ -35,6 +35,10 @@ jobs:
           sed -i 's/static md_dump_slabinfo/static int md_dump_slabinfo/g' drivers/soc/qcom/minidump_log.c || true
           sed -i 's/static md_align_offset/static int md_align_offset/g' drivers/soc/qcom/minidump_log.c || true
           find techpack/display -name "*.c" -exec sed -i 's/static inline _/static inline u32 _/g' {} + || true
+          
+          # Run this in your "Apply Deep Source Code Fixes" step
+          # It finds any instances of "-Werror =" or "-Werror =" and removes the space
+          find . -name "Makefile" -o -name "Kbuild" | xargs sed -i 's/-Werror /-Werror/g' || true
 
           # 5. Remove -Werror globally (This is the proper way to ignore warnings)
           find . -name "Makefile" -o -name "Kbuild" | xargs sed -i 's/-Werror//g' || true
