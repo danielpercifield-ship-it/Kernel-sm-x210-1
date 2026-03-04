@@ -65,8 +65,7 @@ jobs:
           FLAGS="ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- LLVM=1 LLVM_IAS=1 HOSTCC=gcc CC=clang -j$(nproc --all)"
           
           # Normal compiler flags without KSU definitions
-          K_CFLAGS="-Wno-error -Wno-strict-prototypes -Wno-implicit-function-declaration"
-          -Wno-error=unused-but-set-variable
+          K_CFLAGS="-Wno-error -Wno-unused-but-set-variable -Wno-unused-variable -Wno-implicit-int -Wno-error=implicit-function-declaration $K_INC"
           make $FLAGS Image KCFLAGS="$K_CFLAGS" 2>&1 | tee build.log
 
       - name: 📋 Build Summary
