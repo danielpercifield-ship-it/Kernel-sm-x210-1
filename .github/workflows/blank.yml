@@ -25,13 +25,13 @@ jobs:
           # 1. Fix the zsmalloc prototype error
           sed -i 's/void try_schedule_zs_compact()/void try_schedule_zs_compact(void)/g' mm/zsmalloc.c
 
-          # 2. THE NUCLEAR USB FIX: Flatten all headers
-          # First, move all headers from 'inc' to the parent folder
-          cp drivers/usb/typec/P86801_tcpc/inc/*.h drivers/usb/typec/P86801_tcpc/ || true
-          
-          # Second, tell every file in that folder to stop looking for 'inc/'
-          find drivers/usb/typec/P86801_tcpc -type f -name "*.[ch]" -exec sed -i 's|#include "inc/|#include "|g' {} +
-          find drivers/usb/typec/P86801_tcpc -type f -name "*.[ch]" -exec sed -i 's|#include <inc/|#include <|g' {} +
+          # 2. THE USB LOOP BREAKER: Rewrite the Makefile from scratch
+          # This removes the recursive loops that cause the 40-minute hang
+          cat <<EOF > drivers/usb/typec/P86801_tcpc/Makefile
+          obj-y += tcpm.o rt_pd_manager.o pd_dpm_core.o pd_dpm_uvdm.o pd_dpm_alt_mode_dc.o
+          obj-y += aw35615/
+          ccflags-y += -I\$(srctree)/drivers/usb/typec/P86801_tcpc/inc
+          EOF
 
           # 3. Fix the USB-C data pin "lobotomy" (Phantom Stubs)
           mkdir -p drivers/usb/typec/P86801_tcpc/aw35615/
@@ -44,7 +44,7 @@ jobs:
           void DPM_AddPort(void) {}
           void register_observer(void* obs) {}
           EOF
-          echo "obj-y += dummy_stubs.o" >> drivers/usb/typec/P86801_tcpc/aw35615/Makefile
+          echo "obj-y += dummy_stubs.o" > drivers/usb/typec/P86801_tcpc/aw35615/Makefile
 
           # 4. Fix the WALT tracing errors
           sed -i "s|#define TRACE_INCLUDE_PATH .*|#define TRACE_INCLUDE_PATH ../../kernel/sched/walt|g" kernel/sched/walt/trace.h || true
@@ -75,7 +75,7 @@ jobs:
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
           CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm STRIP=llvm-strip \
           OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump \
-          KCFLAGS="-w -Wno-error=implicit-int -Wno-error=implicit-function-declaration -Wno-error=int-conversion -I$(pwd)/drivers/usb/typec/P86801_tcpc" \
+          KCFLAGS="-w -Wno-error=implicit-int -Wno-error=implicit-function-declaration -Wno-error=int-conversion -I$(pwd)/drivers/usb/typec/P86801_tcpc/inc" \
           -j$(nproc --all) Image
 
       - name: 📦 Package with AnyKernel3
