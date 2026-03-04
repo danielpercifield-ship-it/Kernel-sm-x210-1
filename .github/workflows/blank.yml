@@ -5,19 +5,22 @@ on:
 jobs:
   build-kernel:
     runs-on: ubuntu-latest
+    # Forces build into a legacy-compatible environment
     container: ubuntu:20.04
 
     steps:
       - name: 🛠️ Prepare Environment
-        run: |   
+        run: |
+          apt-get update
+          apt-get install -y software-properties-common
+          add-apt-repository universe
           apt-get update
           DEBIAN_FRONTEND=noninteractive apt-get install -y \
             git bc build-essential flex bison libssl-dev libelf-dev \
             clang llvm lld gcc-aarch64-linux-gnu \
-            tar zip wget python3 cpio xz-utils dos2unix curl
+            tar zip wget python3 cpio xz-utils dos2unix curl \
+            device-tree-compiler
 
-            apt-get install -y device-tree-compiler
-            
       - name: 📥 Checkout Kernel Source
         uses: actions/checkout@v4
 
@@ -25,31 +28,33 @@ jobs:
         run: |
           make ARCH=arm64 mrproper
           
-          # 1. DISABLE INTERNAL DTC (Prevents 'exponent' and 'suffix' errors)
+          # 1. THE ULTIMATE TRACE FIX: Point TRACE_INCLUDE_PATH correctly
+          # This replaces the '.' with a path that works from include/trace/
+          grep -rnl "#define TRACE_INCLUDE_PATH ." . | xargs sed -i 's|#define TRACE_INCLUDE_PATH .|#define TRACE_INCLUDE_PATH ../../$(src)|g' || true
+          
+          # 2. CFLAGS FIX: Ensure local folder is in the search path for headers
+          find . -name "Makefile" -o -name "Kbuild" | xargs sed -i '/ccflags-y/ s/$/ -I$(src)/' || true
+
+          # 3. DISABLE INTERNAL DTC: Bypass 'exponent' and 'suffix' errors
           sed -i 's/subdir-y += dtc/#subdir-y += dtc/' scripts/Makefile || true
           echo "hostprogs-y :=" > scripts/dtc/Makefile
           echo "always :=" >> scripts/dtc/Makefile
 
-          # 2. GLOBAL TRACE FIX (Prevents './trace.h' not found)
-          # We add the local source path to the compiler's search list globally
-          export KCPPFLAGS="-I."
-          find . -name "Makefile" -o -name "Kbuild" | xargs sed -i '/ccflags-y/ s/$/ -I$(src) -I./' || true
-          
-          # 3. FIX THE "=strict-prototypes" BUG
+          # 4. FIX THE "=strict-prototypes" BUG: Remove mangled flags
           find . -name "Makefile" -o -name "Kbuild" | xargs sed -i 's/=strict-prototypes//g' || true
           find . -name "Makefile" -o -name "Kbuild" | xargs sed -i 's/=implicit-function-declaration//g' || true
           find . -name "Makefile" -o -name "Kbuild" | xargs sed -i 's/=implicit-int//g' || true
           find . -name "Makefile" -o -name "Kbuild" | xargs sed -i 's/=return-type//g' || true
           find . -name "Makefile" -o -name "Kbuild" | xargs sed -i 's/-Werror =/-Werror=/g' || true
 
-          # 4. USB-C Header Flattener
+          # 5. USB-C Header Flattener
           find drivers/usb/typec -type d -name "inc" | while read -r incdir; do
             parent=$(dirname "$incdir")
             cp -r "$incdir"/* "$parent/" || true
           done
           find drivers/usb/typec -type f -exec sed -i 's|#include "inc/|#include "|g' {} +
           
-          # 5. Generic Cleanups
+          # 6. Generic Cleanups & 'q' stripping
           find . -type f -name "Kconfig*" -exec dos2unix {} + || true
           find . -type f -name "gta9pwifi_eur_open_defconfig" -exec sed -i 's/qgki/gki/g' {} + || true
           sed -i 's/qgki/gki/g' Makefile || true
@@ -57,34 +62,30 @@ jobs:
       - name: ⚙️ Kernel Config & Hardware Force-In
         run: |
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- gta9pwifi_eur_open_defconfig
-          
-          # Use olddefconfig to automatically answer "YES" to all those stalling questions
+          # Answer all new config questions with defaults
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
           
-          ./scripts/config --file .config -e CONFIG_WLAN -e CONFIG_QCACLD_WLAN -e CONFIG_WLAN_VENDOR_QCOM
+          # Force built-in to bypass vermagic mismatch
+          ./scripts/config --file .config -e CONFIG_WLAN -e CONFIG_QCACLD_WLAN -e CONFIG_WLAN_VENDOR_QCOM -e CONFIG_INPUT_SENSORHUB -e CONFIG_SENSORS_SSC -e CONFIG_IIO
           ./scripts/config --file .config --set-str CONFIG_LOCALVERSION "-gki"
           ./scripts/config --file .config -d CONFIG_MODULE_SIG -d CONFIG_MODVERSIONS
           
-          # Final sync
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
-
 
       - name: 🔨 Compile
         run: |
           echo "-28972655-abX210XXS6CYB9" > .scmversion
           touch build.log
+          # Use system DTC to bypass internal scripts/dtc/ bugs
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
             LLVM=1 LLVM_IAS=1 HOSTCC=gcc CC=clang \
             DTC=$(which dtc) \
-            WERROR=0 KCFLAGS="-w -I." \
+            WERROR=0 KCFLAGS="-w -I$(pwd)" \
             -j$(nproc --all) Image 2>&1 | tee build.log
-
-
 
       - name: 📋 Build Summary
         if: always()
         run: |
-          # Use -s to check if file exists and has size
           if [ -s build.log ]; then
             echo "::group::⚠️ VIEW ALL WARNINGS"
             grep -i "warning:" build.log || echo "No warnings found."
@@ -93,7 +94,7 @@ jobs:
             grep -i "error:" build.log || echo "No errors found."
             echo "::endgroup::"
           else
-            echo "Build log is empty. The build failed before starting."
+            echo "Build log is empty. The build failed before log creation."
           fi
 
       - name: 📦 Package Output
@@ -105,6 +106,7 @@ jobs:
             cp arch/arm64/boot/Image AnyKernel3/
             cd AnyKernel3 && zip -r9 ../TabA9Plus-GKI-Fixed.zip *
           else
+            echo "Error: Kernel Image not found!"
             exit 1
           fi
 
