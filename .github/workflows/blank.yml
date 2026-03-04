@@ -27,21 +27,15 @@ jobs:
         run: |
           make ARCH=arm64 mrproper
           
-          # 1. PRECISE TRACE FIXES (Corrects the "race" typo and pathing)
-          # We target the exact WALT trace file to ensure no letters are dropped
+          # 1. PRECISE TRACE FIXES 
           sed -i 's|#define TRACE_INCLUDE_PATH .*|#define TRACE_INCLUDE_PATH ../../kernel/sched/walt|g' kernel/sched/walt/trace.h || true
-          
-          # Fix for perf counters
           sed -i 's|#define TRACE_INCLUDE_PATH .*|#define TRACE_INCLUDE_PATH ../../arch/arm64/kernel|g' arch/arm64/kernel/perf_trace_counters.h || true
-          
-          # Global fix for other files: only replace if it is exactly "#define TRACE_INCLUDE_PATH ."
-          # This prevents "trace" from becoming "race" in existing paths
           grep -rnl "#define TRACE_INCLUDE_PATH ." . | xargs sed -i 's|#define TRACE_INCLUDE_PATH \.|#define TRACE_INCLUDE_PATH ./|g' || true
           
           # 2. CFLAGS & HEADER FIXES
           find . -name "Makefile" -o -name "Kbuild" | xargs sed -i '/ccflags-y/ s/$/ -I$(src)/' || true
 
-          # 3. DISABLE INTERNAL DTC
+          # 3. DISABLE INTERNAL DTC 
           sed -i 's/subdir-y += dtc/#subdir-y += dtc/' scripts/Makefile || true
           echo "hostprogs-y :=" > scripts/dtc/Makefile
           echo "always :=" >> scripts/dtc/Makefile
@@ -59,6 +53,13 @@ jobs:
           # 6. STRIP 'q' BRANDING
           find . -type f -name "gta9pwifi_eur_open_defconfig" -exec sed -i 's/qgki/gki/g' {} + || true
           sed -i 's/qgki/gki/g' Makefile || true
+
+          # 7. 🛑 FOCALTECH TOUCHSCREEN FIRMWARE FIX
+          # Create empty dummy files to satisfy the missing firmware includes
+          mkdir -p drivers/input/touchscreen/focaltech_touch_spi/include/firmware
+          touch drivers/input/touchscreen/focaltech_touch_spi/include/firmware/fw_sample.i
+          mkdir -p include/firmware
+          touch include/firmware/fw_sample.i
 
       - name: ⚙️ Kernel Config & Hardware Force-In
         run: |
