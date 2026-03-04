@@ -22,7 +22,7 @@ jobs:
 
       - name: 🩹 Apply Source Patches (Compatibility Fixes)
         run: |
-          # 1. Fix the zsmalloc prototype error (the one you just hit)
+          # 1. Fix the zsmalloc prototype error
           sed -i 's/void try_schedule_zs_compact()/void try_schedule_zs_compact(void)/g' mm/zsmalloc.c
 
           # 2. Fix the USB-C data pin "lobotomy" (Phantom Stubs)
@@ -38,13 +38,15 @@ jobs:
           EOF
           echo "obj-y += dummy_stubs.o" >> drivers/usb/typec/P86801_tcpc/aw35615/Makefile
 
-          # 3. Fix the WALT tracing errors
+          # 3. Fix the USB Type-C include trap (Flattener v2)
+          find drivers/usb/typec -type f -name "*.h" -exec sed -i 's|#include "inc/|#include "|g' {} +
+          find drivers/usb/typec -type f -name "*.c" -exec sed -i 's|#include "inc/|#include "|g' {} +
+          cp drivers/usb/typec/P86801_tcpc/inc/*.h drivers/usb/typec/P86801_tcpc/ || true
+
+          # 4. Fix the WALT tracing errors
           sed -i "s|#define TRACE_INCLUDE_PATH .*|#define TRACE_INCLUDE_PATH ../../kernel/sched/walt|g" kernel/sched/walt/trace.h || true
 
-          # Fix missing return type in display driver
-          sed -i 's/static inline _dsc_subblk_offset/static inline int _dsc_subblk_offset/g' techpack/display/msm/sde/sde_hw_dsc_1_2.c
-
-          # Fix missing return type in display driver
+          # 5. Fix missing return type in display driver
           sed -i 's/static inline _dsc_subblk_offset/static inline int _dsc_subblk_offset/g' techpack/display/msm/sde/sde_hw_dsc_1_2.c
 
       - name: ⚙️ Configure Kernel
@@ -63,14 +65,14 @@ jobs:
 
       - name: 🔨 Compile Kernel (The Master Run)
         run: |
-          # This ID must match your tablet's stock modules exactly
           echo "-28972655-abX210XXS6CYB9" > .scmversion
           
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
           CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm STRIP=llvm-strip \
           OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump \
-          KCFLAGS="-w -Wno-error=implicit-int -Wno-error=implicit-function-declaration -Wno-error=int-conversion -Wno-unused-function" \
+          KCFLAGS="-w -Wno-error=implicit-int -Wno-error=implicit-function-declaration -Wno-error=int-conversion -Wno-unused-function -I$(pwd)/drivers/usb/typec/P86801_tcpc" \
           -j$(nproc --all) Image
+
 
       - name: 📦 Package with AnyKernel3
         run: |
