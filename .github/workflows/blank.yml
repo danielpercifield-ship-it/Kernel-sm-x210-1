@@ -50,17 +50,19 @@ jobs:
           done
           find drivers/usb/typec -type f -exec sed -i "s|#include \"inc/|#include \"|g" {} +
           
-          # 6. MAKEFILE NUKE AND PAVE WITH INCLUDE PATHS AND Q STRIPPING
+          # 6. MAKEFILE NUKE AND PAVE (Excluding broken backup files)
           find . -type f -name "Kconfig*" -exec dos2unix {} + || true
           find . -type f -name "Makefile" -exec dos2unix {} + || true
           find . -type f -name "Kbuild" -exec dos2unix {} + || true
           
-          # Generate a clean Makefile that knows where to find the headers
-          echo "ccflags-y += -I\$(src)/.. -I\$(srctree)/drivers/usb/typec/tcpm" > drivers/usb/typec/P86801_tcpc/aw35615/Makefile
+          # Generate a clean Makefile but explicitly ignore the broken tcpm.c file
+          echo "ccflags-y += -I\$(src) -I\$(src)/.." > drivers/usb/typec/P86801_tcpc/aw35615/Makefile
           for f in drivers/usb/typec/P86801_tcpc/aw35615/*.c; do
             if [ -f "$f" ]; then
               name=$(basename "$f" .c)
-              echo "obj-y += ${name}.o" >> drivers/usb/typec/P86801_tcpc/aw35615/Makefile
+              if [ "$name" != "tcpm" ]; then
+                echo "obj-y += ${name}.o" >> drivers/usb/typec/P86801_tcpc/aw35615/Makefile
+              fi
             fi
           done
           
