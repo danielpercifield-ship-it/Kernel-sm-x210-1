@@ -27,33 +27,28 @@ jobs:
         run: |
           make ARCH=arm64 mrproper
           
-          # 1. THE TRACE FIX: Explicitly point to the local directory for arch/arm64
-          sed -i 's|#define TRACE_INCLUDE_PATH .|#define TRACE_INCLUDE_PATH ../../arch/arm64/kernel|g' arch/arm64/kernel/perf_trace_counters.h || true
+          # 1. Surgical Trace Fix (Solves the "perf_trace_counters.h" mangled path)
+          sed -i 's|#define TRACE_INCLUDE_PATH .*|#define TRACE_INCLUDE_PATH ../../arch/arm64/kernel|g' arch/arm64/kernel/perf_trace_counters.h || true
           
-          # Generic fallback for other trace headers
-          grep -rnl "#define TRACE_INCLUDE_PATH ." . | xargs sed -i 's|#define TRACE_INCLUDE_PATH .|#define TRACE_INCLUDE_PATH ./|g' || true
-          
-          # 2. CFLAGS FIX
+          # 2. Global header path adjustment
           find . -name "Makefile" -o -name "Kbuild" | xargs sed -i '/ccflags-y/ s/$/ -I$(src)/' || true
 
-          # 3. DISABLE INTERNAL DTC
+          # 3. Disable internal DTC scripts
           sed -i 's/subdir-y += dtc/#subdir-y += dtc/' scripts/Makefile || true
           echo "hostprogs-y :=" > scripts/dtc/Makefile
           echo "always :=" >> scripts/dtc/Makefile
 
-          # 4. FIX THE "=strict-prototypes" BUG
+          # 4. Remove problematic strict flags
           find . -name "Makefile" -o -name "Kbuild" | xargs sed -i 's/=strict-prototypes//g' || true
-          find . -name "Makefile" -o -name "Kbuild" | xargs sed -i 's/=implicit-function-declaration//g' || true
-
-          # 5. USB-C Header Flattener
+          
+          # 5. USB-C Header Organization
           find drivers/usb/typec -type d -name "inc" | while read -r incdir; do
             parent=$(dirname "$incdir")
             cp -r "$incdir"/* "$parent/" || true
           done
           find drivers/usb/typec -type f -exec sed -i 's|#include "inc/|#include "|g' {} +
           
-          # 6. Generic Cleanups & 'q' stripping
-          find . -type f -name "Kconfig*" -exec dos2unix {} + || true
+          # 6. 'q' Branding Stripping
           find . -type f -name "gta9pwifi_eur_open_defconfig" -exec sed -i 's/qgki/gki/g' {} + || true
           sed -i 's/qgki/gki/g' Makefile || true
 
@@ -62,10 +57,9 @@ jobs:
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- gta9pwifi_eur_open_defconfig
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
           
-          # Force built-in modules
-          ./scripts/config --file .config -e CONFIG_WLAN -e CONFIG_QCACLD_WLAN -e CONFIG_WLAN_VENDOR_QCOM -e CONFIG_INPUT_SENSORHUB -e CONFIG_SENSORS_SSC -e CONFIG_IIO
+          # Force built-in status for connectivity
+          ./scripts/config --file .config -e CONFIG_WLAN -e CONFIG_QCACLD_WLAN -e CONFIG_WLAN_VENDOR_QCOM -e CONFIG_INPUT_SENSORHUB -e CONFIG_SENSORS_SSC
           ./scripts/config --file .config --set-str CONFIG_LOCALVERSION "-gki"
-          ./scripts/config --file .config -d CONFIG_MODULE_SIG -d CONFIG_MODVERSIONS
           
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
 
@@ -97,7 +91,6 @@ jobs:
             cp arch/arm64/boot/Image AnyKernel3/
             cd AnyKernel3 && zip -r9 ../TabA9Plus-GKI-Fixed.zip *
           else
-            echo "Error: Kernel Image not found!"
             exit 1
           fi
 
