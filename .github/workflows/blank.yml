@@ -15,22 +15,6 @@ jobs:
       - name: 📥 Checkout Kernel Source
         uses: actions/checkout@v4
 
-      - name: 💉 Inject Missing Qualcomm WiFi Source
-        run: |
-          # Pulling the missing qcacld-3.0 driver from a verified Snapdragon 695 repo
-          git clone https://github.com/LineageOS/android_kernel_samsung_sm6375.git --depth 1 -b lineage-21 temp_repo || \
-          git clone https://github.com/EssentialOpenSource/qcacld-3.0.git --depth 1 temp_repo
-          
-          mkdir -p techpack/wlan
-          cp -r temp_repo/techpack/wlan/* techpack/wlan/ || cp -r temp_repo/* techpack/wlan/
-          rm -rf temp_repo
-          
-          # 🛑 SAFE STITCH: Links the folders without breaking the Makefile functions
-          echo "" >> Makefile
-          echo "core-y += techpack/wlan/" >> Makefile
-          echo "drivers-y += drivers/kernelsu/" >> Makefile
-          echo "✅ WiFi & KSU linked safely"
-
       - name: 📥 Integrate KernelSU-Next
         run: |
           curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -
@@ -43,7 +27,7 @@ jobs:
           # 🛑 FIX: ZSMALLOC PROTOTYPE (Solves the 'function without a prototype' error)
           sed -i 's/void try_schedule_zs_compact()/void try_schedule_zs_compact(void)/g' mm/zsmalloc.c || true
 
-          # 🛑 FIX: KERNEL 5.4 SECCOMP ERRORS (The 'filter_count' crash fix)
+          # 🛑 FIX: KERNEL 5.4 SECCOMP ERRORS
           sed -i 's/atomic_set(&current->seccomp.filter_count, 0);/\/\/ filter_count bypass/g' drivers/kernelsu/app_profile.c || true
           sed -i 's/current->seccomp.mode = 0;/\/\/ mode bypass/g' drivers/kernelsu/app_profile.c || true
           
@@ -74,13 +58,12 @@ jobs:
 
       - name: 🔨 Compile
         run: |
-          # Satisfy Samsung's version check
           echo "-28972655-abX210XXS6CYB9" > .scmversion
           export LOCALVERSION=""
           
           FLAGS="ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- LLVM=1 LLVM_IAS=1 HOSTCC=gcc CC=clang -j$(nproc --all)"
           
-          # Added -Wno-strict-prototypes to skip minor code style errors
+          # Added -Wno-strict-prototypes to skip the zsmalloc-style errors
           K_CFLAGS="-DCONFIG_KSU=1 -DCONFIG_KSU_NEXT=1 -DKSU_NEXT=1 -Wno-error -Wno-strict-prototypes -Wno-implicit-function-declaration"
           
           make $FLAGS Image KCFLAGS="$K_CFLAGS"
