@@ -21,15 +21,17 @@ jobs:
      
       - name: 🩹 Apply Deep Source Code Fixes
         run: |
-          # 🛑 FIX: SECCOMP NATIVE NR (Solves undeclared identifier 'SECCOMP_ARCH_NATIVE_NR')
-          # We define the missing constant to match the 5.4 kernel's architecture check
-          sed -i '7i #ifndef SECCOMP_ARCH_NATIVE_NR\n#define SECCOMP_ARCH_NATIVE_NR SECCOMP_ARCH_NATIVE\n#endif' drivers/kernelsu/seccomp_cache.c || true
+          # 🛑 FIX: SECCOMP ARCH DEFINITIONS (Solves 'undeclared identifier SECCOMP_ARCH_NATIVE')
+          # We manually define the audit architecture for ARM64 (Tab A9+)
+          sed -i '7i #include <linux/audit.h>' drivers/kernelsu/seccomp_cache.c || true
+          sed -i '8i #ifndef SECCOMP_ARCH_NATIVE\n#define SECCOMP_ARCH_NATIVE AUDIT_ARCH_AARCH64\n#endif' drivers/kernelsu/seccomp_cache.c || true
+          sed -i '9i #ifndef SECCOMP_ARCH_NATIVE_NR\n#define SECCOMP_ARCH_NATIVE_NR SECCOMP_ARCH_NATIVE\n#endif' drivers/kernelsu/seccomp_cache.c || true
 
           # 🛑 FIX: KSU Pkg Observer Pointer
           sed -i 's/.handle_inode_event =/ \/\/ .handle_event =/g' drivers/kernelsu/pkg_observer.c || true
           sed -i 's/.handle_event =/ \/\/ .handle_event =/g' drivers/kernelsu/pkg_observer.c || true
           
-          # 🛑 FIX: Samsung Display Syntax (Wildcard fix for all display files)
+          # 🛑 FIX: Samsung Display Syntax (Wildcard)
           find techpack/display -name "*.c" -exec sed -i 's/static inline _/static inline u32 _/g' {} + || true
           
           # 🛑 FIX: PGTABLE & TWA_RESUME
