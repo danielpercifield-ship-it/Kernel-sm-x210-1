@@ -14,7 +14,8 @@ jobs:
           DEBIAN_FRONTEND=noninteractive apt-get install -y \
             git bc build-essential flex bison libssl-dev libelf-dev \
             clang llvm lld gcc-aarch64-linux-gnu \
-            tar zip wget python3 cpio xz-utils dos2unix curl
+            tar zip wget python3 cpio xz-utils dos2unix curl \
+            device-tree-compiler
 
       - name: 📥 Checkout Kernel Source
         uses: actions/checkout@v4
@@ -64,12 +65,14 @@ jobs:
       - name: 🔨 Compile
         run: |
           echo "-28972655-abX210XXS6CYB9" > .scmversion
-          # Ensure build.log exists even if make fails immediately
           touch build.log
+          
+          # We add DTC=dtc to bypass the broken internal scripts/dtc/
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
             LLVM=1 LLVM_IAS=1 HOSTCC=gcc CC=clang \
-            WERROR=0 KCFLAGS="-w" \
+            WERROR=0 KCFLAGS="-w" DTC=dtc \
             -j$(nproc --all) Image 2>&1 | tee build.log
+
 
       - name: 📋 Build Summary
         if: always()
