@@ -25,7 +25,12 @@ jobs:
           # 1. Fix the zsmalloc prototype error
           sed -i 's/void try_schedule_zs_compact()/void try_schedule_zs_compact(void)/g' mm/zsmalloc.c
 
-          # 2. THE USB FIX: Weak Symbol Stubs (Stops 'Duplicate Symbol' Linker Error)
+          # 2. THE NUCLEAR USB FIX: Flatten header paths
+          # This removes "inc/" from the include lines so the compiler stops looking for inc/inc/
+          find drivers/usb/typec/P86801_tcpc/ -type f -name "*.[ch]" -exec sed -i 's|#include "inc/|#include "|g' {} +
+          find drivers/usb/typec/P86801_tcpc/ -type f -name "*.[ch]" -exec sed -i 's|#include <inc/|#include <|g' {} +
+
+          # 3. Weak Symbol Stubs (Stops 'Duplicate Symbol' Linker Error)
           mkdir -p drivers/usb/typec/P86801_tcpc/aw35615/
           cat <<EOF > drivers/usb/typec/P86801_tcpc/aw35615/dummy_stubs.c
           void __attribute__((weak)) notify_observers(void) {}
@@ -38,10 +43,10 @@ jobs:
           EOF
           echo "obj-y += dummy_stubs.o" > drivers/usb/typec/P86801_tcpc/aw35615/Makefile
 
-          # 3. Fix the WALT tracing errors (Scheduling)
+          # 4. Fix the WALT tracing errors (Scheduling)
           sed -i "s|#define TRACE_INCLUDE_PATH .*|#define TRACE_INCLUDE_PATH ../../kernel/sched/walt|g" kernel/sched/walt/trace.h || true
 
-          # 4. Fix missing return type in display driver
+          # 5. Fix missing return type in display driver
           sed -i 's/static inline _dsc_subblk_offset/static inline int _dsc_subblk_offset/g' techpack/display/msm/sde/sde_hw_dsc_1_2.c
 
       - name: ⚙️ Configure Kernel
@@ -68,7 +73,7 @@ jobs:
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
           CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm STRIP=llvm-strip \
           OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump \
-          KCFLAGS="-w -Wno-error=implicit-int -Wno-error=implicit-function-declaration -Wno-error=int-conversion -I$(pwd)/drivers/usb/typec/P86801_tcpc/inc" \
+          KCFLAGS="-w -Wno-error=implicit-int -Wno-error=implicit-function-declaration -Wno-error=int-conversion -I$(pwd)/drivers/usb/typec/P86801_tcpc -I$(pwd)/drivers/usb/typec/P86801_tcpc/inc" \
           -j$(nproc --all) Image
 
       - name: 📦 Package with AnyKernel3
