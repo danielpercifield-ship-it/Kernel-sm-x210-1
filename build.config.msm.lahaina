@@ -17,6 +17,7 @@ KERNEL_DIR=${_KERNEL_DIR}
 MSM_ARCH=lahaina
 BRANCH=msm-5.4
 VARIANTS=(qgki-debug qgki-consolidate qgki gki gki-only)
+LOCALVERSION="-qgki-28972655-abX210XXS6CYB9"
 
 DT_OVERLAY_SUPPORT=1
 
