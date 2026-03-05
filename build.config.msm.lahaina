@@ -44,13 +44,22 @@ esac
 
 
 ################################################################################
-# Force the kernel to use the correct preemption and disable picky checks
+# THE FINAL OVERRIDE: This runs AFTER generate_defconfig.sh finishes
 function update_final_config() {
+    echo "Forcing final config overrides..."
     ${KERNEL_DIR}/scripts/config --file ${OUT_DIR}/.config \
         -e CONFIG_PREEMPT \
         -e CONFIG_PREEMPTION \
+        -d CONFIG_PREEMPT_NONE \
         -d CONFIG_PREEMPT_VOLUNTARY \
-        -d CONFIG_MODVERSIONS
+        -d CONFIG_PREEMPT_DYNAMIC \
+        -d CONFIG_MODVERSIONS \
+        --set-str CONFIG_LOCALVERSION "-qgki-28972655-abX210XXS6CYB9"
+
+    # This recalculates dependencies so the 'PREEMPT' string is locked in
     (cd ${OUT_DIR} && make O=${OUT_DIR} "${TOOL_ARGS[@]}" olddefconfig)
 }
+
+# Add our function to the very end of the command list
 append_cmd POST_DEFCONFIG_CMDS 'update_final_config'
+
