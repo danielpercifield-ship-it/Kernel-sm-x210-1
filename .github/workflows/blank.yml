@@ -26,13 +26,16 @@ jobs:
           sed -i 's/void try_schedule_zs_compact()/void try_schedule_zs_compact(void)/g' mm/zsmalloc.c
 
           # 2. THE NUCLEAR USB FIX: Flatten header paths
-          # This removes "inc/" from the include lines so the compiler stops looking for inc/inc/
           find drivers/usb/typec/P86801_tcpc/ -type f -name "*.[ch]" -exec sed -i 's|#include "inc/|#include "|g' {} +
           find drivers/usb/typec/P86801_tcpc/ -type f -name "*.[ch]" -exec sed -i 's|#include <inc/|#include <|g' {} +
 
-          # 3. Weak Symbol Stubs (Stops 'Duplicate Symbol' Linker Error)
+          # 3. Weak Symbol Stubs + Missing Charger Symbols
+          # Adding 'is_aw35615' and 'aw_retry_source_cap' to satisfy the charger driver
           mkdir -p drivers/usb/typec/P86801_tcpc/aw35615/
           cat <<EOF > drivers/usb/typec/P86801_tcpc/aw35615/dummy_stubs.c
+          #include <linux/types.h>
+          bool is_aw35615 = false;
+          int aw_retry_source_cap = 0;
           void __attribute__((weak)) notify_observers(void) {}
           int __attribute__((weak)) DPM_SpecRev(void) { return 2; }
           void* __attribute__((weak)) DPM_GetSourceCap(void) { return 0; }
@@ -51,25 +54,17 @@ jobs:
 
       - name: ⚙️ Configure Kernel
         run: |
-          # Use your uploaded stock blueprint
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- gki_stock_defconfig
-          
-          # Wi-Fi fix: Match the local version to stock modules
           ./scripts/config --file .config --set-str CONFIG_LOCALVERSION "-qgki"
           ./scripts/config --file .config --enable CONFIG_KSU
-          
-          # HANG PREVENTION: Kill LTO and Control Flow Integrity
           ./scripts/config --file .config --disable CONFIG_LTO_CLANG
           ./scripts/config --file .config --disable CONFIG_THINLTO
           ./scripts/config --file .config --disable CONFIG_CFI_CLANG
-          
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
 
       - name: 🔨 Compile Kernel (The Master Run)
         run: |
-          # Match the stock module SCM ID
           echo "-28972655-abX210XXS6CYB9" > .scmversion
-          
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
           CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm STRIP=llvm-strip \
           OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump \
