@@ -102,14 +102,20 @@ jobs:
           git clone https://github.com/osm0sis/AnyKernel3.git
           cp arch/arm64/boot/Image AnyKernel3/
           
-          # Grabbing your 44 uploaded factory modules from your repo
+          # Grabbing your 44 uploaded factory modules
           if [ -d "modules" ]; then
             mkdir -p AnyKernel3/modules
             cp modules/*.ko AnyKernel3/modules/
+            
+            # THE HEX PATCH: Force all modules to Uppercase PREEMPT
+            # This fixes "Exec format error" during boot
+            sed -i 's/preempt/PREEMPT/g' AnyKernel3/modules/*.ko
+            echo "Successfully patched 44 modules to PREEMPT"
           fi
           
           cd AnyKernel3
           zip -r9 ../TabA9P-Final-Victory.zip *
+
       
       - name: 📤 Upload Result
         uses: actions/upload-artifact@v4
