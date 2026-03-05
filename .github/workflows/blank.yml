@@ -19,6 +19,12 @@ jobs:
         run: |
           curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s v0.9.5
 
+      - name: 🎭 Spoof KernelSU Version
+        run: |
+          # Change the version from 11872 to 32302 so the Manager app grants root
+          sed -i 's/11872/32302/g' drivers/kernelsu/ksu.h
+          echo "KernelSU Version Spoofed to 32302"
+          
       - name: 🩹 Apply Source Patches (The Fixer)
         run: |
           # 1. Fix the zsmalloc prototype error
@@ -66,6 +72,13 @@ jobs:
           ./scripts/config --file .config --enable CONFIG_MODULE_FORCE_LOAD
           ./scripts/config --file .config --set-str CONFIG_LOCALVERSION "-qgki-28972655-abX210XXS6CYB9"
           sed -i 's/CONFIG_LOCALVERSION_AUTO=y/CONFIG_LOCALVERSION_AUTO=n/g' .config
+
+          #Force UPPERCASE PREEMPT
+          ./scripts/config --file .config --enable CONFIG_PREEMPT
+          ./scripts/config --file .config --enable CONFIG_PREEMPTION
+          ./scripts/config --file .config --disable CONFIG_PREEMPT_VOLUNTARY
+          ./scripts/config --file .config --disable CONFIG_PREEMPT_DYNAMIC
+
           
           # Force WALT tracing and disable LTO to prevent hangs
           ./scripts/config --file .config --enable CONFIG_SCHED_WALT
