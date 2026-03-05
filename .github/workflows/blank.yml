@@ -86,4 +86,20 @@ jobs:
 
       - name: 📦 Package with Prebuilt Modules
         run: |
-          git clone
+          git clone https://github.com/osm0sis/AnyKernel3.git
+          cp arch/arm64/boot/Image AnyKernel3/
+          
+          # Grabbing your 44 uploaded factory modules from your repo
+          if [ -d "modules" ]; then
+            mkdir -p AnyKernel3/modules
+            cp modules/*.ko AnyKernel3/modules/
+          fi
+          
+          cd AnyKernel3
+          zip -r9 ../TabA9P-Final-Victory.zip *
+      
+      - name: 📤 Upload Result
+        uses: actions/upload-artifact@v4
+        with:
+          name: TabA9P-Final-Victory
+          path: TabA9P-Final-Victory.zip
