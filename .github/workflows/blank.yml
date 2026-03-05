@@ -47,12 +47,16 @@ jobs:
           # 4. THE MAGIC ID FIX: Inject Samsung identifier
           sed -i 's/UTS_RELEASE/UTS_RELEASE " UNIQUE_ID_vermagic125"/g' include/linux/vermagic.h
 
-          # 5. THE WALT TRACE FIX (Symbolic Link Method)
-          # We create a link so the compiler finds trace.h in the expected path
+          # 5. THE WALT TRACE FIX: Symbolic Link Method
+          # Creating a direct shortcut so the compiler finds trace.h in the events folder
           mkdir -p include/trace/events
           ln -sf ../../../kernel/sched/walt/trace.h include/trace/events/walt.h
 
-          # 6. Fix missing return type in display driver
+          # 6. THE WALT TRACE FIX: Makefile Include Path
+          # Force the compiler to look in the walt directory for headers
+          sed -i '1i ccflags-y += -I$(src)' kernel/sched/walt/Makefile
+
+          # 7. Fix missing return type in display driver
           sed -i 's/static inline _dsc_subblk_offset/static inline int _dsc_subblk_offset/g' techpack/display/msm/sde/sde_hw_dsc_1_2.c
 
       - name: ⚙️ Configure Kernel
@@ -63,10 +67,8 @@ jobs:
           ./scripts/config --file .config --set-str CONFIG_LOCALVERSION "-qgki-28972655-abX210XXS6CYB9"
           sed -i 's/CONFIG_LOCALVERSION_AUTO=y/CONFIG_LOCALVERSION_AUTO=n/g' .config
           
-          # Force WALT tracing to be built-in
+          # Force WALT tracing and disable LTO to prevent hangs
           ./scripts/config --file .config --enable CONFIG_SCHED_WALT
-          
-          # HANG PREVENTION
           ./scripts/config --file .config --disable CONFIG_LTO_CLANG
           ./scripts/config --file .config --disable CONFIG_THINLTO
           ./scripts/config --file .config --disable CONFIG_CFI_CLANG
@@ -84,20 +86,4 @@ jobs:
 
       - name: 📦 Package with Prebuilt Modules
         run: |
-          git clone https://github.com/osm0sis/AnyKernel3.git
-          cp arch/arm64/boot/Image AnyKernel3/
-          
-          # This grabs those 44 modules you just pushed
-          if [ -d "modules" ]; then
-            mkdir -p AnyKernel3/modules
-            cp modules/*.ko AnyKernel3/modules/
-          fi
-          
-          cd AnyKernel3
-          zip -r9 ../TabA9P-Final-Victory.zip *
-
-      - name: 📤 Upload Result
-        uses: actions/upload-artifact@v4
-        with:
-          name: TabA9P-Final-Victory
-          path: TabA9P-Final-Victory.zip
+          git clone
