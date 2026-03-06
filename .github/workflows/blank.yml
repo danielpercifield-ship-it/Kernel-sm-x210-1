@@ -20,31 +20,17 @@ jobs:
           
       - name: 🩹 Apply Deep Source Fixes (The "Scrapper" Cleanup)
         run: |
-          # 1. 🛑 THE NUCLEAR MAKEFILE SCRAPPER
-          # This deletes EVERY instance of -Werror and -Wno-error logic.
-          # Since we use '-w' to compile, these individual rules are just 'trash' cards.
-          find . -type f \( -name "Makefile" -o -name "Kbuild" -o -name "*.include" -o -name "*.mk" \) -exec sed -i 's/-Werror//g' {} + || true
-          find . -type f \( -name "Makefile" -o -name "Kbuild" -o -name "*.include" -o -name "*.mk" \) -exec sed -i 's/-Wno-error[^ ]*//g' {} + || true
+          # 1. THE TARGETED MAKEFILE CLEANUP
+          # This removes -Werror and anything attached to it (like -Werror=...)
+          find . -type f \( -name "Makefile" -o -name "Kbuild" -o -name "*.include" -o -name "*.mk" \) \
+          -exec sed -i 's/-Werror[^ ]*//g' {} + || true
+          find . -type f \( -name "Makefile" -o -name "Kbuild" -o -name "*.include" -o -name "*.mk" \) \
+          -exec sed -i 's/-Wno-error[^ ]*//g' {} + || true
 
           # 2. THE IDENTITY BYPASS (Loads -qgki drivers into -gki kernel)
           sed -i 's/return -ENOEXEC;/return 0;/g' kernel/module.c || true
           sed -i 's/same_magic = !strcmp(vermagic, modmagic);/same_magic = 1;/g' kernel/module.c || true
-          
-          # 3. FIX VERMAGIC (Match stock PREEMPT string)
-          # Your tablet said PREEMPT (Uppercase), but this spoof covers all bases.
-          sed -i 's/\" PREEMPT \"/\" preempt \"/g' include/linux/vermagic.h || true
 
-          # 4. FIX MINIDUMP & DISPLAY (Implicit int fix)
-          sed -i 's/static md_dump_slabinfo/static int md_dump_slabinfo/g' drivers/soc/qcom/minidump_log.c || true
-          sed -i 's/static md_align_offset/static int md_align_offset/g' drivers/soc/qcom/minidump_log.c || true
-          find techpack/display -name "*.c" -exec sed -i 's/static inline _/static inline int _/g' {} + || true
-
-          # 5. USB-C HEADER FLATTENER
-          find drivers/usb/typec -type d -name "inc" | while read -r incdir; do
-            parent=$(dirname "$incdir")
-            cp -r "$incdir"/* "$parent/" || true
-          done
-          find drivers/usb/typec -type f -exec sed -i 's|#include "inc/|#include "|g' {} +
 
       - name: ⚙️ Configure Kernel (Matching Stock Match)
         run: |
@@ -75,17 +61,15 @@ jobs:
 
       - name: 🔨 Compile Kernel
         run: |
-          # fingerprint for BT trust
           echo "-28972655-abX210XXS6CYB9" > .scmversion
           export ARCH=arm64
           
-          # THE ULTIMATE COMPILE COMMAND
-          # We use '-w' (ignore all warnings) and clear out environment variables 
-          # that might re-inject the broken flags.
-          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- LLVM=1 LLVM_IAS=1 HOSTCC=gcc CC=clang \
-          KCFLAGS="-w -D__LINUX_ARM_ARCH__=8 -I$(pwd)/security/selinux/include -I$(pwd)/drivers" \
-          HOSTCFLAGS="-w" HOSTCXXFLAGS="-w" \
+          # Simplified KCFLAGS: We let the Makefiles handle the includes, 
+          # just forcing 'ignore warnings' (-w)
+          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- LLVM=1 LLVM_IAS=1 \
+          KCFLAGS="-w" HOSTCFLAGS="-w" HOSTCXXFLAGS="-w" \
           -j$(nproc --all) Image 2>&1 | tee build.log
+
 
       - name: 📋 Build Summary
         if: always()
