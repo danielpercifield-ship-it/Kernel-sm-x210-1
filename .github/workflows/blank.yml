@@ -46,6 +46,22 @@ jobs:
           # 6. Ensure the 'inc' directory is in the include path for this specific driver
           # We append the local 'inc' directory to the Makefile's header search path.
           echo "subdir-ccflags-y += -Idrivers/usb/typec/P86801_tcpc/inc" >> drivers/usb/typec/P86801_tcpc/Makefile || true
+      
+      - name: 🩹 Apply Deep Source Fixes (The Static Scrapper)
+        run: |
+          # 1. FIX SENSORS CLASS (Common Samsung/Qualcomm conflict)
+          # Removes 'static' from the sensors_class declaration so it can be exported
+          sed -i 's/static struct class \*sensors_class;/struct class \*sensors_class;/g' drivers/sensors/sensors_class.c || true
+          
+          # 2. FIX EMBMS MULTICAST (Networking conflict)
+          # Finds the definition and removes static to allow EXPORT_SYMBOL to work
+          find drivers/net/ethernet/qualcomm/rmnet -name "*.c" -exec sed -i 's/static int embms_tm_multicast_recv/int embms_tm_multicast_recv/g' {} + || true
+
+          # 3. FIX TSENS MTC (Thermal management conflict)
+          find drivers/thermal/qcom -name "*.c" -exec sed -i 's/static int tsens_mtc_reset_history_counter/int tsens_mtc_reset_history_counter/g' {} + || true
+
+          # 4. FIX SD77428 HW INIT (Display/Touch conflict)
+          find techpack/display -name "*.c" -exec sed -i 's/static int sd77428_hw_init/int sd77428_hw_init/g' {} + || true
 
 
       - name: ⚙️ Configure Kernel
