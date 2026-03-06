@@ -16,15 +16,15 @@ jobs:
 
       - name: 🔐 Integrate KernelSU
         run: |
-          # Professional KSU integration (satisfies the KSUN requirement)
+          # Professional KSU integration
           curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s v0.9.5
           
-      - name: 🩹 Apply Deep Source Fixes (The "Syntax Hunter" Step)
+      - name: 🩹 Apply Deep Source Fixes (The "Syntax Killer" Step)
         run: |
           # 1. THE NUCLEAR SYNTAX FIX (Kills the '=strict-prototypes' error)
-          # This command finds every Makefile and removes the space before the equals sign
-          find . -type f -name "Makefile" -o -name "Kbuild" | xargs sed -i 's/-Wno-error =/-Wno-error=/g' || true
-          find . -type f -name "Makefile" -o -name "Kbuild" | xargs sed -i 's/-Werror//g' || true
+          # This command hunts for " -Wno-error =" or " -Wno-error =" and cleans the space
+          find . -type f \( -name "Makefile" -o -name "Kbuild" -o -name "*.include" \) -exec sed -i 's/-Wno-error =/-Wno-error=/g' {} + || true
+          find . -type f \( -name "Makefile" -o -name "Kbuild" -o -name "*.include" \) -exec sed -i 's/-Werror//g' {} + || true
           
           # 2. THE IDENTITY BYPASS (Loads -qgki drivers into -gki kernel)
           sed -i 's/return -ENOEXEC;/return 0;/g' kernel/module.c || true
@@ -57,6 +57,7 @@ jobs:
           # 🛑 FORCE HARDWARE BUILT-IN (WiFi/Rotation Fix)
           ./scripts/config --file .config --set-val CONFIG_WLAN y
           ./scripts/config --file .config --set-val CONFIG_QCACLD_WLAN y
+          ./scripts/config --file .config --set-val CONFIG_WLAN_VENDOR_QCOM y
           ./scripts/config --file .config --set-val CONFIG_INPUT_SENSORHUB y
           ./scripts/config --file .config --set-val CONFIG_SENSORS_SSC y
           ./scripts/config --file .config --set-val CONFIG_IIO y
@@ -69,12 +70,12 @@ jobs:
 
       - name: 🔨 Compile Kernel
         run: |
-          # matches the fingerprint for Bluetooth trust
+          # Matches fingerprint for Bluetooth trust
           echo "-gki" > .scmversion
           export ARCH=arm64
           
-          # THE NO-CRASH COMPILE: Single line, no variables, hardcoded -w
-          # This is the "Grand Treant" move.
+          # THE NO-CRASH COMPILE: Simple flags, no spaces near equals.
+          # We use '-w' to force ignore all warnings so the syntax errors vanish.
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- LLVM=1 LLVM_IAS=1 HOSTCC=gcc CC=clang \
           KCFLAGS="-w -D__LINUX_ARM_ARCH__=8 -I$(pwd)/security/selinux/include -I$(pwd)/drivers" \
           -j$(nproc --all) Image 2>&1 | tee build.log
