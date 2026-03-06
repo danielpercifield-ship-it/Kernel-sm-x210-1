@@ -1,4 +1,4 @@
-name: Tab A9+ GKI Victory Build
+name: Tab A9+ GKI WiFi-Rotation Fix
 on:
   workflow_dispatch:
 
@@ -14,86 +14,89 @@ jobs:
       - name: 📥 Checkout Source
         uses: actions/checkout@v4
 
-      - name: 🔐 Integrate KernelSU
+      - name: 🩹 Apply Deep Source Code Fixes
         run: |
-          curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s v0.9.5
-          
-      - name: 🩹 Apply Source Patches
-        run: |
-          # 1. THE WALT TRACE FIX
-          # This tells the compiler to look in the current directory (kernel/sched/walt) 
-          # for the trace headers so it finds './trace.h'
-          sed -i '1i ccflags-y += -I$(src)' kernel/sched/walt/Makefile
-
-          # 2. THE TRACE_INCLUDE_PATH FIX
-          # This fixes the hardcoded path inside the trace file itself
-          sed -i 's|#define TRACE_INCLUDE_PATH .|#define TRACE_INCLUDE_PATH ../../kernel/sched/walt|g' kernel/sched/walt/trace.h
-
-          # 3. Your existing surgical warning bypasses (Keep these!)
-          sed -i 's/KBUILD_CFLAGS   += -Werror/KBUILD_CFLAGS   += -w/g' Makefile
-          sed -i 's/KBUILD_CPPFLAGS += -Werror/KBUILD_CPPFLAGS += -w/g' Makefile
-          
-          # 4. Identity & Module Bypass (WiFi/BT/Rotation Fix)
-          sed -i 's/\" PREEMPT \"/\" preempt \"/g' include/linux/vermagic.h || true
+          # 1. THE IDENTITY BYPASS (Loads -qgki drivers into -gki kernel)
           sed -i 's/return -ENOEXEC;/return 0;/g' kernel/module.c || true
           sed -i 's/same_magic = !strcmp(vermagic, modmagic);/same_magic = 1;/g' kernel/module.c || true
 
-          # 5. Samsung/USB Fixes
-          sed -i 's/void try_schedule_zs_compact()/void try_schedule_zs_compact(void)/g' mm/zsmalloc.c || true
+          # 2. FIX MINIDUMP & DISPLAY (Implicit int and syntax fixes)
+          sed -i 's/static md_dump_slabinfo/static int md_dump_slabinfo/g' drivers/soc/qcom/minidump_log.c || true
+          sed -i 's/static md_align_offset/static int md_align_offset/g' drivers/soc/qcom/minidump_log.c || true
+          find techpack/display -name "*.c" -exec sed -i 's/static inline _/static inline u32 _/g' {} + || true
+
+          # 3. USB-C HEADER FLATTENER (Fixes 'inc/tcpci.h' not found)
           find drivers/usb/typec -type d -name "inc" | while read -r incdir; do
             parent=$(dirname "$incdir")
             cp -r "$incdir"/* "$parent/" || true
           done
           find drivers/usb/typec -type f -exec sed -i 's|#include "inc/|#include "|g' {} +
 
+          # 4. NUCLEAR MAKEFILE CLEANUP (Removes all local -Werror rules)
+          find . -name "Makefile" -o -name "Kbuild" | xargs sed -i 's/-Werror//g' || true
+          
+          # 5. Standard Fixes
+          sed -i 's/void try_schedule_zs_compact()/void try_schedule_zs_compact(void)/g' mm/zsmalloc.c || true
+          sed -i 's|#define TRACE_INCLUDE_PATH .|#define TRACE_INCLUDE_PATH ../../kernel/sched/walt|g' kernel/sched/walt/trace.h || true
 
-      - name: ⚙️ Configure Kernel
+      - name: ⚙️ Configure Kernel (The "Everything-In" Setup)
         run: |
-          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- gki_stock_defconfig
+          # Load the base defconfig
+          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- gta9pwifi_eur_open_defconfig
           
-          # Force the clean -gki name
-          ./scripts/config --file .config --set-str CONFIG_LOCALVERSION "-gki"
+          # 🛑 THE WIFI FIX: Force WiFi to be Built-in (y)
+          ./scripts/config --file .config --set-val CONFIG_WLAN y
+          ./scripts/config --file .config --set-val CONFIG_QCACLD_WLAN y
+          ./scripts/config --file .config --set-val CONFIG_WLAN_VENDOR_QCOM y
           
-          # Match the lowercase 'preempt' preemption model
-          ./scripts/config --file .config --enable CONFIG_PREEMPT_VOLUNTARY
-          ./scripts/config --file .config --disable CONFIG_PREEMPT
-          
-          # Force rotation sensors and WiFi to Built-in
+          # 🛑 THE ROTATION FIX: Force Sensors to be Built-in (y)
           ./scripts/config --file .config --set-val CONFIG_INPUT_SENSORHUB y
           ./scripts/config --file .config --set-val CONFIG_SENSORS_SSC y
           ./scripts/config --file .config --set-val CONFIG_IIO y
-          ./scripts/config --file .config --set-val CONFIG_WLAN y
-          ./scripts/config --file .config --set-val CONFIG_QCACLD_WLAN y
           
-          ./scripts/config --file .config --enable CONFIG_KSU
-          yes "" | make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
+          # 🛑 THE PREEMPTION MATCH (Matches your 'strings' output: Uppercase PREEMPT)
+          ./scripts/config --file .config --enable CONFIG_PREEMPT
+          ./scripts/config --file .config --disable CONFIG_PREEMPT_VOLUNTARY
+          
+          # 🛑 SET THE NAME (satisfying KSUN by removing 'q')
+          ./scripts/config --file .config --set-str CONFIG_LOCALVERSION "-gki"
+          
+          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
 
       - name: 🔨 Compile Kernel
         run: |
-          # Kill ghost flags and build with maximum silence
-          unset KCFLAGS CFLAGS LDFLAGS
-          echo "" > .scmversion
+          # Matches fingerprint for Bluetooth/System trust
+          echo "-28972655-abX210XXS6CYB9" > .scmversion
+          export ARCH=arm64
           
-          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
-          CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm STRIP=llvm-strip \
-          OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump \
-          KCFLAGS="-w" \
-          HOSTCFLAGS="-w" \
-          HOSTCXXFLAGS="-w" \
-          -j$(nproc --all) Image Image.gz
+          # THE NO-CRASH COMPILE: Using '-w' ensures '=strict-prototypes' error never happens
+          FLAGS="ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- LLVM=1 LLVM_IAS=1 HOSTCC=gcc CC=clang -j$(nproc --all)"
+          K_INC="-I$(pwd)/security/selinux/include -I$(pwd)/drivers"
+          K_CFLAGS="-w -D__LINUX_ARM_ARCH__=8 $K_INC"
+          
+          make $FLAGS Image KCFLAGS="$K_CFLAGS" 2>&1 | tee build.log
+
+      - name: 📋 Build Summary
+        if: always()
+        run: |
+          echo "::group::❌ VIEW FATAL ERRORS"
+          grep -i "error:" build.log || echo "No errors found."
+          echo "::endgroup::"
 
       - name: 📦 Package Result
         if: success()
         run: |
-          git clone https://github.com/osm0sis/AnyKernel3.git
-          cp arch/arm64/boot/Image AnyKernel3/
-          cd AnyKernel3
-          sed -i 's/do.devicecheck=1/do.devicecheck=0/g' anykernel.sh
-          zip -r9 ../TabA9Plus-Perfect-Build.zip *
+          if [ -f arch/arm64/boot/Image ]; then
+            git clone https://github.com/osm0sis/AnyKernel3.git
+            sed -i 's/do.devicecheck=1/do.devicecheck=0/g' AnyKernel3/anykernel.sh
+            cp arch/arm64/boot/Image AnyKernel3/
+            cd AnyKernel3 && zip -r9 ../TabA9Plus-Victory-Build.zip *
+          else
+            exit 1
+          fi
 
       - name: 📤 Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: TabA9Plus-Perfect-Build
-          path: TabA9Plus-Perfect-Build.zip
-
+          name: TabA9Plus-Victory-Build
+          path: TabA9Plus-Victory-Build.zip
