@@ -20,27 +20,23 @@ jobs:
           
       - name: 🩹 Apply Deep Source Fixes (Surgical Precision)
         run: |
-          # 1. Surgical -Werror removal
-          find . -type f \( -name "Makefile" -o -name "Kbuild" -o -name "*.include" -o -name "*.mk" \) -exec sed -i 's/ -Werror/ /g' {} + || true
-          
-          # 2. THE IDENTITY BYPASS
-          sed -i 's/return -ENOEXEC;/return 0;/g' kernel/module.c || true
-          sed -i 's/same_magic = !strcmp(vermagic, modmagic);/same_magic = 1;/g' kernel/module.c || true
-          
-          # 3. FIX VERMAGIC
-          sed -i 's/\" PREEMPT \"/\" preempt \"/g' include/linux/vermagic.h || true
-          
-          # 4. 🚀 THE TRACE.H FIX (Writing the C code into the file)
-          # This uses 'cat' to overwrite the inclusion logic at the end of the file
+          # 1. Clean up previous failed attempts
+          sed -i '/Manual fix for Trace pathing/d' kernel/sched/walt/trace.h || true
+          sed -i '/TRACE_INCLUDE_PATH/d' kernel/sched/walt/trace.h || true
+          sed -i '/TRACE_INCLUDE_FILE/d' kernel/sched/walt/trace.h || true
           sed -i '/#include <trace\/define_trace.h>/d' kernel/sched/walt/trace.h || true
-          cat <<EOF >> kernel/sched/walt/trace.h
+
+          # 2. 🚀 THE CORRECTED TRACE.H FIX
+          # Using 'EOF' in single quotes prevents variable expansion and marker leaks
+          cat <<'EOF' >> kernel/sched/walt/trace.h
 
           /* Manual fix for Trace pathing */
-             #undef TRACE_INCLUDE_PATH
-             #define TRACE_INCLUDE_PATH ../../kernel/sched/walt
-             #define TRACE_INCLUDE_FILE trace
-             #include <trace/define_trace.h>
-           EOF
+          #undef TRACE_INCLUDE_PATH
+          #define TRACE_INCLUDE_PATH ../../kernel/sched/walt
+          #define TRACE_INCLUDE_FILE trace
+          #include <trace/define_trace.h>
+          EOF
+
 
 
       - name: ⚙️ Configure Kernel
