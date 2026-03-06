@@ -68,6 +68,10 @@ jobs:
           # Force the GKI check to always return true in the kernel driver
           sed -i 's/bool is_gki = false;/bool is_gki = true;/g' drivers/kernelsu/ksu.c
 
+          #GKI BRANDING
+          find . -type f -name "gki_stock_defconfig" -exec sed -i "s/qgki/gki/g" {} + || true
+          sed -i "s/qgki/gki/g" Makefile || true
+          
       - name: ⚙️ Configure Kernel
         run: |
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- gki_stock_defconfig
