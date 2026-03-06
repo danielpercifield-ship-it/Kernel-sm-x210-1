@@ -90,7 +90,15 @@ jobs:
           ./scripts/config --file .config --set-str CONFIG_KSU_VERSION "32302"
           ./scripts/config --file .config --enable CONFIG_KSU_GKI_CANARY
 
+          # Force the kernel to ignore "tampered" module signatures
+          ./scripts/config --file .config --disable CONFIG_MODULE_SIG
+          ./scripts/config --file .config --disable CONFIG_MODULE_SIG_ALL
+          ./scripts/config --file .config --disable CONFIG_MODULE_SIG_FORCE
+          ./scripts/config --file .config --disable CONFIG_MODULE_SIG_CHECK
           
+          # Ensure KernelSU doesn't block "Legacy" module loading
+          ./scripts/config --file .config --enable CONFIG_MODULE_FORCE_LOAD
+
           # Force WALT tracing and disable LTO to prevent hangs
           ./scripts/config --file .config --enable CONFIG_SCHED_WALT
           ./scripts/config --file .config --disable CONFIG_LTO_CLANG
