@@ -1,4 +1,4 @@
-name: Tab A9+ GKI & KSUN Victory Build (Vermagic Fix)
+name: Tab A9+ GKI & KSUN Final Victory
 on:
   workflow_dispatch:
 
@@ -20,16 +20,16 @@ jobs:
           
       - name: 🩹 Apply Deep Source Fixes (The "Twin Identity" Patch)
         run: |
-          # 1. THE LOWERCASE PREEMPT FIX (WiFi/Rotation Fix)
-          # This forces the kernel to identify as "preempt" instead of "PREEMPT"
+          # 1. THE LOWERCASE PREEMPT FIX
+          # This forces the kernel to match your tablet's factory drivers exactly
           sed -i 's/\" PREEMPT \"/\" preempt \"/g' include/linux/vermagic.h || true
           
           # 2. THE NUCLEAR MODULE BYPASS
-          # This tells the kernel to stop checking signatures and names entirely
+          # This forces the kernel to ignore name mismatches (GKI vs QGKI)
           sed -i 's/return -ENOEXEC;/return 0;/g' kernel/module.c || true
           sed -i 's/same_magic = !strcmp(vermagic, modmagic);/same_magic = 1;/g' kernel/module.c || true
 
-          # 3. Standard Samsung/Qualcomm Fixes
+          # 3. Standard Samsung Fixes
           sed -i 's/void try_schedule_zs_compact()/void try_schedule_zs_compact(void)/g' mm/zsmalloc.c || true
           find drivers/usb/typec -type d -name "inc" | while read -r incdir; do
             parent=$(dirname "$incdir")
@@ -40,40 +40,40 @@ jobs:
           sed -i 's/static md_align_offset/static int md_align_offset/g' drivers/soc/qcom/minidump_log.c || true
           find . -name "Makefile" -o -name "Kbuild" | xargs sed -i 's/-Werror//g' || true
 
-      - name: ⚙️ Configure Kernel (The "GKI & Lowercase" Setup)
+      - name: ⚙️ Configure Kernel (The "Everything-In" Setup)
         run: |
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- gki_stock_defconfig
           
-          # 🛑 SATISFYING KSUN (Stripping the 'q')
+          # 🛑 Satisfy KSUN and WiFi
           ./scripts/config --file .config --set-str CONFIG_LOCALVERSION "-gki"
-          
-          # 🛑 FORCING VOLUNTARY PREEMPTION (This creates the lowercase 'preempt' string)
           ./scripts/config --file .config --enable CONFIG_PREEMPT_VOLUNTARY
           ./scripts/config --file .config --disable CONFIG_PREEMPT
           
-          # 🛑 FIXING ROTATION (Force Sensor Hub to Built-in)
+          # 🛑 Built-in Drivers (WiFi, Bluetooth, Sensors)
+          ./scripts/config --file .config --set-val CONFIG_WLAN y
+          ./scripts/config --file .config --set-val CONFIG_QCACLD_WLAN y
           ./scripts/config --file .config --set-val CONFIG_INPUT_SENSORHUB y
           ./scripts/config --file .config --set-val CONFIG_SENSORS_SSC y
           ./scripts/config --file .config --set-val CONFIG_IIO y
-
-          # 🛑 MODULE OVERRIDE
-          ./scripts/config --file .config --disable CONFIG_MODULE_SIG
-          ./scripts/config --file .config --enable CONFIG_MODULE_FORCE_LOAD
           ./scripts/config --file .config --enable CONFIG_KSU
           
           yes "" | make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
 
       - name: 🔨 Compile Kernel
         run: |
-          # The scmversion match
           echo "-gki" > .scmversion
-          
           export ARCH=arm64
-          FLAGS="ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- LLVM=1 LLVM_IAS=1 HOSTCC=gcc CC=clang -j$(nproc --all)"
-          K_INC="-I$(pwd)/security/selinux/include -I$(pwd)/drivers"
-          K_CFLAGS="-w -D__LINUX_ARM_ARCH__=8 $K_INC"
-          
-          make $FLAGS Image KCFLAGS="$K_CFLAGS"
+          # Simplified compile line to prevent shell errors
+          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- LLVM=1 LLVM_IAS=1 HOSTCC=gcc CC=clang \
+          KCFLAGS="-w -D__LINUX_ARM_ARCH__=8 -I$(pwd)/security/selinux/include -I$(pwd)/drivers" \
+          -j$(nproc --all) Image 2>&1 | tee build.log
+
+      - name: 📋 Build Summary
+        if: always()
+        run: |
+          echo "::group::❌ VIEW FATAL ERRORS"
+          grep -i "error:" build.log || echo "No errors found."
+          echo "::endgroup::"
 
       - name: 📦 Package Output
         if: success()
@@ -82,10 +82,10 @@ jobs:
           cp arch/arm64/boot/Image AnyKernel3/
           cd AnyKernel3
           sed -i 's/do.devicecheck=1/do.devicecheck=0/g' anykernel.sh
-          zip -r9 ../TabA9Plus-Perfect-Match.zip *
+          zip -r9 ../TabA9Plus-Victory.zip *
 
       - name: 📤 Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: TabA9Plus-Perfect-Match
-          path: TabA9Plus-Perfect-Match.zip
+          name: TabA9Plus-Victory
+          path: TabA9Plus-Victory.zip
