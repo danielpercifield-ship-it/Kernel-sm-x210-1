@@ -98,7 +98,9 @@ jobs:
           
           # Ensure KernelSU doesn't block "Legacy" module loading
           ./scripts/config --file .config --enable CONFIG_MODULE_FORCE_LOAD
-
+          ./scripts/config --file .config --disable CONFIG_KPROBES
+          ./scripts/config --file .config --disable CONFIG_KPROBES_QGKI
+          
           # Force WALT tracing and disable LTO to prevent hangs
           ./scripts/config --file .config --enable CONFIG_SCHED_WALT
           ./scripts/config --file .config --disable CONFIG_LTO_CLANG
