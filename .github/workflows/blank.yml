@@ -20,28 +20,28 @@ jobs:
           
       - name: 🩹 Apply Deep Source Fixes (Surgical Precision)
         run: |
-          # 1. REMOVE -Werror WITHOUT BREAKING MAKEFILE FUNCTIONS
-          # We target the flag specifically with spaces to avoid breaking $(call ...) macros
+          # 1. Surgical -Werror removal
           find . -type f \( -name "Makefile" -o -name "Kbuild" -o -name "*.include" -o -name "*.mk" \) -exec sed -i 's/ -Werror/ /g' {} + || true
-          find . -type f \( -name "Makefile" -o -name "Kbuild" -o -name "*.include" -o -name "*.mk" \) -exec sed -i 's/ -Wno-error/ /g' {} + || true
-
-          # 2. THE IDENTITY BYPASS (Loads -qgki drivers into -gki kernel)
+          
+          # 2. THE IDENTITY BYPASS
           sed -i 's/return -ENOEXEC;/return 0;/g' kernel/module.c || true
           sed -i 's/same_magic = !strcmp(vermagic, modmagic);/same_magic = 1;/g' kernel/module.c || true
           
-          # 3. FIX VERMAGIC (Match stock lowercase preempt string)
+          # 3. FIX VERMAGIC
           sed -i 's/\" PREEMPT \"/\" preempt \"/g' include/linux/vermagic.h || true
+          
+          # 4. 🚀 THE TRACE.H FIX (Writing the C code into the file)
+          # This uses 'cat' to overwrite the inclusion logic at the end of the file
+          sed -i '/#include <trace\/define_trace.h>/d' kernel/sched/walt/trace.h || true
+          cat <<EOF >> kernel/sched/walt/trace.h
 
-          # 4. FIX MINIDUMP & DISPLAY (Implicit int fixes for Clang)
-          sed -i 's/static md_dump_slabinfo/static int md_dump_slabinfo/g' drivers/soc/qcom/minidump_log.c || true
-          sed -i 's/static md_align_offset/static int md_align_offset/g' drivers/soc/qcom/minidump_log.c || true
-          find techpack/display -name "*.c" -exec sed -i 's/static inline _/static inline int _/g' {} + || true
+          /* Manual fix for Trace pathing */
+             #undef TRACE_INCLUDE_PATH
+             #define TRACE_INCLUDE_PATH ../../kernel/sched/walt
+             #define TRACE_INCLUDE_FILE trace
+             #include <trace/define_trace.h>
+           EOF
 
-          /* This part must be outside protection */
-          #undef TRACE_INCLUDE_PATH
-          #define TRACE_INCLUDE_PATH ../../kernel/sched/walt  // Change from '.' to this path
-          #define TRACE_INCLUDE_FILE trace
-          #include <trace/define_trace.h>
 
       - name: ⚙️ Configure Kernel
         run: |
