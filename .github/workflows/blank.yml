@@ -16,18 +16,19 @@ jobs:
 
       - name: 🔐 Integrate KernelSU
         run: |
+          # Professional KSU integration (satisfies the KSUN requirement)
           curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s v0.9.5
           
-      - name: 🩹 Apply Deep Source Fixes (The "Syntax Killer" Patches)
+      - name: 🩹 Apply Deep Source Fixes (The "Syntax Hunter" Step)
         run: |
-          # 1. THE IDENTITY BYPASS (Loads -qgki drivers into -gki kernel)
+          # 1. THE NUCLEAR SYNTAX FIX (Kills the '=strict-prototypes' error)
+          # This command finds every Makefile and removes the space before the equals sign
+          find . -type f -name "Makefile" -o -name "Kbuild" | xargs sed -i 's/-Wno-error =/-Wno-error=/g' || true
+          find . -type f -name "Makefile" -o -name "Kbuild" | xargs sed -i 's/-Werror//g' || true
+          
+          # 2. THE IDENTITY BYPASS (Loads -qgki drivers into -gki kernel)
           sed -i 's/return -ENOEXEC;/return 0;/g' kernel/module.c || true
           sed -i 's/same_magic = !strcmp(vermagic, modmagic);/same_magic = 1;/g' kernel/module.c || true
-
-          # 2. THE LOWERCASE PREEMPT SPOOF (Stock WiFi/BT Match)
-          # We found your tablet expects PREEMPT (Uppercase), but just in case,
-          # we patch the header to allow either casing.
-          sed -i 's/\" PREEMPT \"/\" preempt \"/g' include/linux/vermagic.h || true
 
           # 3. FIX MINIDUMP & DISPLAY (Implicit int and syntax fixes)
           sed -i 's/static md_dump_slabinfo/static int md_dump_slabinfo/g' drivers/soc/qcom/minidump_log.c || true
@@ -41,53 +42,41 @@ jobs:
           done
           find drivers/usb/typec -type f -exec sed -i 's|#include "inc/|#include "|g' {} +
 
-          # 5. 🛑 THE NUCLEAR SYNTAX KILLER (Fixes the '=strict-prototypes' crash)
-          # This hunts for "-Wno-error =" or similar broken strings and cleans them
-          find . -type f -name "Makefile" -o -name "Kbuild" | xargs sed -i 's/-Wno-error =/-Wno-error=/g' || true
-          find . -type f -name "Makefile" -o -name "Kbuild" | xargs sed -i 's/-Werror//g' || true
-          find . -type f -name "Makefile" -o -name "Kbuild" | xargs sed -i 's/ -Wno-error//g' || true
-
-      - name: ⚙️ Configure Kernel (Hardware Match)
+      - name: ⚙️ Configure Kernel (Matching Stock DNA)
         run: |
           # Load your specific defconfig
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- gki_stock_defconfig
           
-          # 🆔 SATISFYING KSUN (Stripping the 'q')
+          # 🛑 THE NAME FIX (Satisfies KSUN)
           ./scripts/config --file .config --set-str CONFIG_LOCALVERSION "-gki"
           
-          # 🆔 MATCHING STOCK PREEMPTION (Uppercase PREEMPT)
+          # 🛑 THE PREEMPTION MATCH (Matches your 'strings' output: Uppercase PREEMPT)
           ./scripts/config --file .config --enable CONFIG_PREEMPT
           ./scripts/config --file .config --disable CONFIG_PREEMPT_VOLUNTARY
           
-          # 📡 FORCE WIFI BUILT-IN (Squad MVP)
+          # 🛑 FORCE HARDWARE BUILT-IN (WiFi/Rotation Fix)
           ./scripts/config --file .config --set-val CONFIG_WLAN y
           ./scripts/config --file .config --set-val CONFIG_QCACLD_WLAN y
-          ./scripts/config --file .config --set-val CONFIG_WLAN_VENDOR_QCOM y
-          
-          # 📡 FORCE ROTATION BUILT-IN
           ./scripts/config --file .config --set-val CONFIG_INPUT_SENSORHUB y
           ./scripts/config --file .config --set-val CONFIG_SENSORS_SSC y
           ./scripts/config --file .config --set-val CONFIG_IIO y
           
-          # Disable problematic features that hang the build
+          # Bypass LTO prompts
           ./scripts/config --file .config --disable LTO_CLANG
-          ./scripts/config --file .config --disable RELR
           ./scripts/config --file .config --enable CONFIG_KSU
           
           yes "" | make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
- 
+
       - name: 🔨 Compile Kernel
         run: |
-          # Kill ghost flags and build with maximum silence
-          unset KCFLAGS CFLAGS LDFLAGS
-          echo "" > .scmversion
-      
-          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
-          CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm STRIP=llvm-strip \
-          OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump \
-          KCFLAGS="-w" \
-          HOSTCFLAGS="-w" \
-          HOSTCXXFLAGS="-w" \
+          # matches the fingerprint for Bluetooth trust
+          echo "-gki" > .scmversion
+          export ARCH=arm64
+          
+          # THE NO-CRASH COMPILE: Single line, no variables, hardcoded -w
+          # This is the "Grand Treant" move.
+          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- LLVM=1 LLVM_IAS=1 HOSTCC=gcc CC=clang \
+          KCFLAGS="-w -D__LINUX_ARM_ARCH__=8 -I$(pwd)/security/selinux/include -I$(pwd)/drivers" \
           -j$(nproc --all) Image 2>&1 | tee build.log
 
       - name: 📋 Build Summary
