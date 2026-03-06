@@ -70,15 +70,13 @@ jobs:
 
       - name: 🔨 Compile Kernel
         run: |
-          # Matches fingerprint for Bluetooth stability
-          echo "-gki" > .scmversion
-          export ARCH=arm64
-          
-          # THE "NO-CRASH" COMPILE COMMAND
-          # We use -w to ignore all warnings so that '=strict-prototypes' error vanishes.
-          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- LLVM=1 LLVM_IAS=1 HOSTCC=gcc CC=clang \
-          KCFLAGS="-w -D__LINUX_ARM_ARCH__=8 -I$(pwd)/security/selinux/include -I$(pwd)/drivers" \
+          echo "" > .scmversion
+          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
+          CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm STRIP=llvm-strip \
+          OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump \
+          KCFLAGS="-w -I$(pwd)/drivers/usb/typec/P86801_tcpc -I$(pwd)/drivers/usb/typec/P86801_tcpc/inc" \
           -j$(nproc --all) Image
+
 
       - name: 📦 Package Result
         if: success()
