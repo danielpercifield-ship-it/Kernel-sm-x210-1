@@ -80,7 +80,7 @@ jobs:
           KCFLAGS="-w" \
           HOSTCFLAGS="-w" \
           HOSTCXXFLAGS="-w" \
-          -j$(nproc --all) Image
+          -j$(nproc --all) Image Image.gz
 
       - name: 📦 Package Result
         if: success()
