@@ -1,4 +1,4 @@
-name: Tab A9+ Standard GKI (WiFi & Rotation Victory)
+name: Tab A9+ GKI WiFi & Rotation victory
 on:
   workflow_dispatch:
 
@@ -18,75 +18,83 @@ jobs:
         run: |
           curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s v0.9.5
           
-      - name: 🩹 Apply Source Patches
+      - name: 🩹 Apply Deep Source Fixes (The "Clean Board" Patches)
         run: |
-          # 1. THE WALT TRACE FIX
-          sed -i '1i ccflags-y += -I$(src)' kernel/sched/walt/Makefile
-          sed -i 's|#define TRACE_INCLUDE_PATH .|#define TRACE_INCLUDE_PATH ../../kernel/sched/walt|g' kernel/sched/walt/trace.h
+          # 1. THE CASE-SENSITIVITY FIX (WiFi/BT Fix)
+          sed -i 's/\" PREEMPT \"/\" preempt \"/g' include/linux/vermagic.h || true
           
-          # 2. THE IDENTITY SPOOF (Harlequin Move)
-          # We remove the lowercase preempt patch because your tablet expects UPPERCASE PREEMPT
+          # 2. THE IDENTITY BYPASS (Loads -qgki drivers into -gki kernel)
           sed -i 's/return -ENOEXEC;/return 0;/g' kernel/module.c || true
           sed -i 's/same_magic = !strcmp(vermagic, modmagic);/same_magic = 1;/g' kernel/module.c || true
 
-          # 3. SAMSUNG/QUALCOMM TYPO FIXES (The "Scrapper" cleanup)
+          # 3. FIX TYPOS & SYNTAX
           sed -i 's/static md_dump_slabinfo/static int md_dump_slabinfo/g' drivers/soc/qcom/minidump_log.c || true
           sed -i 's/static md_align_offset/static int md_align_offset/g' drivers/soc/qcom/minidump_log.c || true
           sed -i 's/void try_schedule_zs_compact()/void try_schedule_zs_compact(void)/g' mm/zsmalloc.c || true
-          
-          # 4. USB-C HEADER FLATTENER
+          find techpack/display -name "*.c" -exec sed -i 's/static inline _/static inline u32 _/g' {} + || true
+
+          # 4. NUCLEAR USB-C FIX
           find drivers/usb/typec -type d -name "inc" | while read -r incdir; do
             parent=$(dirname "$incdir")
             cp -r "$incdir"/* "$parent/" || true
           done
           find drivers/usb/typec -type f -exec sed -i 's|#include "inc/|#include "|g' {} +
 
-          # 5. NUCLEAR MAKEFILE CLEANUP
+          # 5. REMOVE -Werror (Stops the syntax crash)
           find . -name "Makefile" -o -name "Kbuild" | xargs sed -i 's/-Werror//g' || true
 
-      - name: ⚙️ Configure Kernel
+      - name: ⚙️ Configure Kernel (Answering the Questions)
         run: |
-          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- gki_stock_defconfig
+          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- gta9pwifi_eur_open_defconfig
           
-          # 🛑 SET THE CLEAN NAME (satisfying KSUN)
+          # 🛑 SATISFYING THE CONFIG QUESTIONS (This stops the build from hanging)
+          ./scripts/config --file .config --disable LTO_CLANG
+          ./scripts/config --file .config --disable RELR
+          
+          # 🛑 WIFI & ROTATION (Baking them into the Treant)
           ./scripts/config --file .config --set-str CONFIG_LOCALVERSION "-gki"
-          
-          # 🛑 THE PREEMPTION MATCH (Stock said 'PREEMPT' uppercase, so we enable Full PREEMPT)
           ./scripts/config --file .config --enable CONFIG_PREEMPT
-          ./scripts/config --file .config --disable CONFIG_PREEMPT_VOLUNTARY
-          
-          # 🛑 FORCE HARDWARE BUILT-IN (Squad MVP)
-          ./scripts/config --file .config --set-val CONFIG_WLAN y
           ./scripts/config --file .config --set-val CONFIG_QCACLD_WLAN y
-          ./scripts/config --file .config --set-val CONFIG_INPUT_SENSORHUB y
           ./scripts/config --file .config --set-val CONFIG_SENSORS_SSC y
-          ./scripts/config --file .config --set-val CONFIG_IIO y
-          
+          ./scripts/config --file .config --set-val CONFIG_INPUT_SENSORHUB y
           ./scripts/config --file .config --enable CONFIG_KSU
+          
+          # This 'yes' command automatically hits 'Enter' for any leftover questions
           yes "" | make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
 
       - name: 🔨 Compile Kernel
         run: |
-          # The stock fingerprint helps Bluetooth turn on
-          echo "-28972655-abX210XXS6CYB9" > .scmversion
-          
+          echo "-gki" > .scmversion
           export ARCH=arm64
-          # Simplified compile to prevent shell errors while keeping KSUN headers active
+          
+          # 🛑 CLEAN COMPILE (No environment variables to avoid shell errors)
+          # We pass KCFLAGS directly as a single string
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- LLVM=1 LLVM_IAS=1 HOSTCC=gcc CC=clang \
           KCFLAGS="-w -D__LINUX_ARM_ARCH__=8 -I$(pwd)/security/selinux/include -I$(pwd)/drivers" \
-          -j$(nproc --all) Image
+          -j$(nproc --all) Image 2>&1 | tee build.log
+
+      - name: 📋 Build Summary
+        if: always()
+        run: |
+          echo "::group::❌ VIEW FATAL ERRORS"
+          grep -i "error:" build.log || echo "No errors found."
+          echo "::endgroup::"
 
       - name: 📦 Package Result
         if: success()
         run: |
-          git clone https://github.com/osm0sis/AnyKernel3.git
-          cp arch/arm64/boot/Image AnyKernel3/
-          cd AnyKernel3
-          sed -i 's/do.devicecheck=1/do.devicecheck=0/g' anykernel.sh
-          zip -r9 ../TabA9Plus-Victory-Build.zip *
+          if [ -f arch/arm64/boot/Image ]; then
+            git clone https://github.com/osm0sis/AnyKernel3.git
+            cp arch/arm64/boot/Image AnyKernel3/
+            cd AnyKernel3
+            sed -i 's/do.devicecheck=1/do.devicecheck=0/g' anykernel.sh
+            zip -r9 ../TabA9Plus-Victory.zip *
+          else
+            exit 1
+          fi
 
       - name: 📤 Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: TabA9Plus-WiFi-BT-Rotation-Fixed
-          path: TabA9Plus-Victory-Build.zip
+          name: TabA9Plus-Victory
+          path: TabA9Plus-Victory.zip
