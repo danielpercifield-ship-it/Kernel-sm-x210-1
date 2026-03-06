@@ -65,6 +65,9 @@ jobs:
           # 7. Fix missing return type in display driver
           sed -i 's/static inline _dsc_subblk_offset/static inline int _dsc_subblk_offset/g' techpack/display/msm/sde/sde_hw_dsc_1_2.c
 
+          # Force the GKI check to always return true in the kernel driver
+          sed -i 's/bool is_gki = false;/bool is_gki = true;/g' drivers/kernelsu/ksu.c
+
       - name: ⚙️ Configure Kernel
         run: |
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- gki_stock_defconfig
@@ -78,6 +81,10 @@ jobs:
           ./scripts/config --file .config --enable CONFIG_PREEMPTION
           ./scripts/config --file .config --disable CONFIG_PREEMPT_VOLUNTARY
           ./scripts/config --file .config --disable CONFIG_PREEMPT_DYNAMIC
+
+          # This forces the driver to report itself as a GKI-compatible canary build
+          ./scripts/config --file .config --set-str CONFIG_KSU_VERSION "32302"
+          ./scripts/config --file .config --enable CONFIG_KSU_GKI_CANARY
 
           
           # Force WALT tracing and disable LTO to prevent hangs
