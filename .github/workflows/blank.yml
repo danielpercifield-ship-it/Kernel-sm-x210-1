@@ -18,44 +18,38 @@ jobs:
         run: |
           curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s v0.9.5
           
-      - name: 🩹 Apply Deep Source Fixes (The "Scrapper" Cleanup)
+      - name: 🩹 Apply Deep Source Fixes (Surgical Precision)
         run: |
-          # 1. THE TARGETED MAKEFILE CLEANUP
-          # This removes -Werror and anything attached to it (like -Werror=...)
-          find . -type f \( -name "Makefile" -o -name "Kbuild" -o -name "*.include" -o -name "*.mk" \) \
-          -exec sed -i 's/-Werror[^ ]*//g' {} + || true
-          find . -type f \( -name "Makefile" -o -name "Kbuild" -o -name "*.include" -o -name "*.mk" \) \
-          -exec sed -i 's/-Wno-error[^ ]*//g' {} + || true
+          # 1. REMOVE -Werror WITHOUT BREAKING MAKEFILE FUNCTIONS
+          # We target the flag specifically with spaces to avoid breaking $(call ...) macros
+          find . -type f \( -name "Makefile" -o -name "Kbuild" -o -name "*.include" -o -name "*.mk" \) -exec sed -i 's/ -Werror/ /g' {} + || true
+          find . -type f \( -name "Makefile" -o -name "Kbuild" -o -name "*.include" -o -name "*.mk" \) -exec sed -i 's/ -Wno-error/ /g' {} + || true
 
           # 2. THE IDENTITY BYPASS (Loads -qgki drivers into -gki kernel)
           sed -i 's/return -ENOEXEC;/return 0;/g' kernel/module.c || true
           sed -i 's/same_magic = !strcmp(vermagic, modmagic);/same_magic = 1;/g' kernel/module.c || true
+          
+          # 3. FIX VERMAGIC (Match stock lowercase preempt string)
+          sed -i 's/\" PREEMPT \"/\" preempt \"/g' include/linux/vermagic.h || true
 
+          # 4. FIX MINIDUMP & DISPLAY (Implicit int fixes for Clang)
+          sed -i 's/static md_dump_slabinfo/static int md_dump_slabinfo/g' drivers/soc/qcom/minidump_log.c || true
+          sed -i 's/static md_align_offset/static int md_align_offset/g' drivers/soc/qcom/minidump_log.c || true
+          find techpack/display -name "*.c" -exec sed -i 's/static inline _/static inline int _/g' {} + || true
 
-      - name: ⚙️ Configure Kernel (Matching Stock Match)
+      - name: ⚙️ Configure Kernel
         run: |
-          # Load your specific defconfig
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- gki_stock_defconfig
           
-          # 🛑 THE NAME FIX (Satisfies KSUN)
+          # SETTINGS FOR KERNELSU AND BOOTLOADER ACCEPTANCE
           ./scripts/config --file .config --set-str CONFIG_LOCALVERSION "-gki"
-          
-          # 🛑 THE PREEMPTION MATCH (Stock said 'PREEMPT' uppercase)
           ./scripts/config --file .config --enable CONFIG_PREEMPT
-          ./scripts/config --file .config --disable CONFIG_PREEMPT_VOLUNTARY
+          ./scripts/config --file .config --disable LTO_CLANG
+          ./scripts/config --file .config --enable CONFIG_KSU
           
-          # 🛑 FORCE HARDWARE BUILT-IN (Bypasses modules entirely)
+          # WI-FI & SENSORS AS MODULES (Most stable for Tab A9+)
           ./scripts/config --file .config --set-val CONFIG_WLAN y
           ./scripts/config --file .config --set-val CONFIG_QCACLD_WLAN y
-          ./scripts/config --file .config --set-val CONFIG_WLAN_VENDOR_QCOM y
-          ./scripts/config --file .config --set-val CONFIG_INPUT_SENSORHUB y
-          ./scripts/config --file .config --set-val CONFIG_SENSORS_SSC y
-          ./scripts/config --file .config --set-val CONFIG_IIO y
-          
-          # Disable problematic features and enable KSU
-          ./scripts/config --file .config --disable LTO_CLANG
-          ./scripts/config --file .config --disable RELR
-          ./scripts/config --file .config --enable CONFIG_KSU
           
           yes "" | make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
 
@@ -64,28 +58,20 @@ jobs:
           echo "-28972655-abX210XXS6CYB9" > .scmversion
           export ARCH=arm64
           
-          # Simplified KCFLAGS: We let the Makefiles handle the includes, 
-          # just forcing 'ignore warnings' (-w)
+          # Use KCFLAGS="-w" to suppress all warnings at the compiler level 
+          # instead of editing every Makefile manually
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- LLVM=1 LLVM_IAS=1 \
           KCFLAGS="-w" HOSTCFLAGS="-w" HOSTCXXFLAGS="-w" \
-          -j$(nproc --all) Image 2>&1 | tee build.log
-
-
-      - name: 📋 Build Summary
-        if: always()
-        run: |
-          echo "::group::❌ VIEW FATAL ERRORS"
-          grep -i "error:" build.log || echo "No errors found."
-          echo "::endgroup::"
+          -j$(nproc --all) Image modules 2>&1 | tee build.log
 
       - name: 📦 Package Result
         if: success()
         run: |
           if [ -f arch/arm64/boot/Image ]; then
-            git clone https://github.com/osm0sis/AnyKernel3.git
-            sed -i 's/do.devicecheck=1/do.devicecheck=0/g' AnyKernel3/anykernel.sh
-            cp arch/arm64/boot/Image AnyKernel3/
-            cd AnyKernel3 && zip -r9 ../TabA9Plus-Victory.zip *
+            mkdir -p out/modules
+            find . -name "*.ko" -exec cp {} out/modules/ \;
+            cp arch/arm64/boot/Image out/
+            cd out && zip -r ../TabA9Plus-Victory.zip *
           else
             exit 1
           fi
@@ -96,3 +82,4 @@ jobs:
         with:
           name: TabA9Plus-Victory
           path: TabA9Plus-Victory.zip
+
