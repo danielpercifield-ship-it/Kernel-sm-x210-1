@@ -55,13 +55,13 @@ jobs:
 
       - name: 🔨 Compile Kernel
         run: |
-          echo "-28972655-abX210XXS6CYB9" > .scmversion
-          export ARCH=arm64
+          # 1. Restore the original Makefile if possible (git checkout Makefile)
+          git checkout Makefile 2>/dev/null || true
           
-          # Use KCFLAGS="-w" to suppress all warnings at the compiler level 
-          # instead of editing every Makefile manually
+          # 2. Compile with global warning suppression
+          # This is SAFER than sed-ing the source code.
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- LLVM=1 LLVM_IAS=1 \
-          KCFLAGS="-w" HOSTCFLAGS="-w" HOSTCXXFLAGS="-w" \
+          KCFLAGS="-w -Wno-error" HOSTCFLAGS="-w" HOSTCXXFLAGS="-w" \
           -j$(nproc --all) Image modules 2>&1 | tee build.log
 
       - name: 📦 Package Result
