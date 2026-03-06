@@ -1,16 +1,15 @@
-name: Tab A9+ Final Victory Build (Prebuilt Modules)
+name: Tab A9+ GKI & KSUN Victory Build (Vermagic Fix)
 on:
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    container: ubuntu:20.04
     steps:
       - name: 🛠️ Setup Build Environment
         run: |
-          apt-get update
-          apt-get install -y git bc build-essential flex bison libssl-dev libelf-dev clang lld llvm gcc-aarch64-linux-gnu curl dos2unix cpio zip wget
+          sudo apt-get update
+          sudo apt-get install -y git bc build-essential flex bison libssl-dev libelf-dev clang lld llvm gcc-aarch64-linux-gnu curl dos2unix cpio zip wget
 
       - name: 📥 Checkout Source
         uses: actions/checkout@v4
@@ -18,128 +17,75 @@ jobs:
       - name: 🔐 Integrate KernelSU
         run: |
           curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s v0.9.5
-
-      - name: 🎭 Spoof KernelSU Version
-        run: |
-          # Change the version from 11872 to 32302 so the Manager app grants root
-          sed -i 's/11872/32302/g' drivers/kernelsu/ksu.h
-          echo "KernelSU Version Spoofed to 32302"
           
-      - name: 🩹 Apply Source Patches (The Fixer)
+      - name: 🩹 Apply Deep Source Fixes (The "Twin Identity" Patch)
         run: |
-          # 1. Fix the zsmalloc prototype error
-          sed -i 's/void try_schedule_zs_compact()/void try_schedule_zs_compact(void)/g' mm/zsmalloc.c
-
-          # 2. THE NUCLEAR USB FIX: Flatten header paths
-          find drivers/usb/typec/P86801_tcpc/ -type f -name "*.[ch]" -exec sed -i 's|#include "inc/|#include "|g' {} +
-          find drivers/usb/typec/P86801_tcpc/ -type f -name "*.[ch]" -exec sed -i 's|#include <inc/|#include <|g' {} +
-
-          # 3. Weak Symbol Stubs + Missing Charger Symbols
-          mkdir -p drivers/usb/typec/P86801_tcpc/aw35615/
-          cat <<EOF > drivers/usb/typec/P86801_tcpc/aw35615/dummy_stubs.c
-          #include <linux/types.h>
-          bool is_aw35615 = false;
-          int aw_retry_source_cap = 0;
-          void __attribute__((weak)) notify_observers(void) {}
-          int __attribute__((weak)) DPM_SpecRev(void) { return 2; }
-          void* __attribute__((weak)) DPM_GetSourceCap(void) { return 0; }
-          int __attribute__((weak)) DPM_Retries(void) { return 0; }
-          void __attribute__((weak)) DPM_Init(void) {}
-          void __attribute__((weak)) DPM_AddPort(void) {}
-          void __attribute__((weak)) register_observer(void* obs) {}
-          EOF
-          echo "obj-y += dummy_stubs.o" > drivers/usb/typec/P86801_tcpc/aw35615/Makefile
-
-          # 4. THE MAGIC ID FIX: Inject Samsung identifier
-          sed -i 's/UTS_RELEASE/UTS_RELEASE " UNIQUE_ID_vermagic125"/g' include/linux/vermagic.h
-
-          # 5. THE WALT TRACE FIX: Symbolic Link Method
-          # Creating a direct shortcut so the compiler finds trace.h in the events folder
-          mkdir -p include/trace/events
-          ln -sf ../../../kernel/sched/walt/trace.h include/trace/events/walt.h
-
-          # 6. THE WALT TRACE FIX: Makefile Include Path
-          # Force the compiler to look in the walt directory for headers
-          sed -i '1i ccflags-y += -I$(src)' kernel/sched/walt/Makefile
-
-          # 7. Fix missing return type in display driver
-          sed -i 's/static inline _dsc_subblk_offset/static inline int _dsc_subblk_offset/g' techpack/display/msm/sde/sde_hw_dsc_1_2.c
-
-          # Force the GKI check to always return true in the kernel driver
-          sed -i 's/bool is_gki = false;/bool is_gki = true;/g' drivers/kernelsu/ksu.c
-
-          #GKI BRANDING
-          find . -type f -name "gki_stock_defconfig" -exec sed -i "s/qgki/gki/g" {} + || true
-          sed -i "s/qgki/gki/g" Makefile || true
+          # 1. THE LOWERCASE PREEMPT FIX (WiFi/Rotation Fix)
+          # This forces the kernel to identify as "preempt" instead of "PREEMPT"
+          sed -i 's/\" PREEMPT \"/\" preempt \"/g' include/linux/vermagic.h || true
           
-      - name: ⚙️ Configure Kernel
+          # 2. THE NUCLEAR MODULE BYPASS
+          # This tells the kernel to stop checking signatures and names entirely
+          sed -i 's/return -ENOEXEC;/return 0;/g' kernel/module.c || true
+          sed -i 's/same_magic = !strcmp(vermagic, modmagic);/same_magic = 1;/g' kernel/module.c || true
+
+          # 3. Standard Samsung/Qualcomm Fixes
+          sed -i 's/void try_schedule_zs_compact()/void try_schedule_zs_compact(void)/g' mm/zsmalloc.c || true
+          find drivers/usb/typec -type d -name "inc" | while read -r incdir; do
+            parent=$(dirname "$incdir")
+            cp -r "$incdir"/* "$parent/" || true
+          done
+          find drivers/usb/typec -type f -exec sed -i 's|#include "inc/|#include "|g' {} +
+          sed -i 's/static md_dump_slabinfo/static int md_dump_slabinfo/g' drivers/soc/qcom/minidump_log.c || true
+          sed -i 's/static md_align_offset/static int md_align_offset/g' drivers/soc/qcom/minidump_log.c || true
+          find . -name "Makefile" -o -name "Kbuild" | xargs sed -i 's/-Werror//g' || true
+
+      - name: ⚙️ Configure Kernel (The "GKI & Lowercase" Setup)
         run: |
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- gki_stock_defconfig
+          
+          # 🛑 SATISFYING KSUN (Stripping the 'q')
+          ./scripts/config --file .config --set-str CONFIG_LOCALVERSION "-gki"
+          
+          # 🛑 FORCING VOLUNTARY PREEMPTION (This creates the lowercase 'preempt' string)
+          ./scripts/config --file .config --enable CONFIG_PREEMPT_VOLUNTARY
+          ./scripts/config --file .config --disable CONFIG_PREEMPT
+          
+          # 🛑 FIXING ROTATION (Force Sensor Hub to Built-in)
+          ./scripts/config --file .config --set-val CONFIG_INPUT_SENSORHUB y
+          ./scripts/config --file .config --set-val CONFIG_SENSORS_SSC y
+          ./scripts/config --file .config --set-val CONFIG_IIO y
+
+          # 🛑 MODULE OVERRIDE
           ./scripts/config --file .config --disable CONFIG_MODULE_SIG
           ./scripts/config --file .config --enable CONFIG_MODULE_FORCE_LOAD
-          ./scripts/config --file .config --set-str CONFIG_LOCALVERSION "-qgki-28972655-abX210XXS6CYB9"
-          sed -i 's/CONFIG_LOCALVERSION_AUTO=y/CONFIG_LOCALVERSION_AUTO=n/g' .config
-
-          #Force UPPERCASE PREEMPT
-          ./scripts/config --file .config --enable CONFIG_PREEMPT
-          ./scripts/config --file .config --enable CONFIG_PREEMPTION
-          ./scripts/config --file .config --disable CONFIG_PREEMPT_VOLUNTARY
-          ./scripts/config --file .config --disable CONFIG_PREEMPT_DYNAMIC
-
-          # This forces the driver to report itself as a GKI-compatible canary build
-          ./scripts/config --file .config --set-str CONFIG_KSU_VERSION "32302"
-          ./scripts/config --file .config --enable CONFIG_KSU_GKI_CANARY
-
-          # Force the kernel to ignore "tampered" module signatures
-          ./scripts/config --file .config --disable CONFIG_MODULE_SIG
-          ./scripts/config --file .config --disable CONFIG_MODULE_SIG_ALL
-          ./scripts/config --file .config --disable CONFIG_MODULE_SIG_FORCE
-          ./scripts/config --file .config --disable CONFIG_MODULE_SIG_CHECK
+          ./scripts/config --file .config --enable CONFIG_KSU
           
-          # Ensure KernelSU doesn't block "Legacy" module loading
-          ./scripts/config --file .config --enable CONFIG_MODULE_FORCE_LOAD
-          ./scripts/config --file .config --disable CONFIG_KPROBES
-          ./scripts/config --file .config --disable CONFIG_KPROBES_QGKI
-          
-          # Force WALT tracing and disable LTO to prevent hangs
-          ./scripts/config --file .config --enable CONFIG_SCHED_WALT
-          ./scripts/config --file .config --disable CONFIG_LTO_CLANG
-          ./scripts/config --file .config --disable CONFIG_THINLTO
-          ./scripts/config --file .config --disable CONFIG_CFI_CLANG
-          
-          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
+          yes "" | make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
 
       - name: 🔨 Compile Kernel
         run: |
-          echo "" > .scmversion
-          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
-          CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm STRIP=llvm-strip \
-          OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump \
-          KCFLAGS="-w -Wno-error=implicit-int -Wno-error=implicit-function-declaration -Wno-error=int-conversion -I$(pwd)/drivers/usb/typec/P86801_tcpc -I$(pwd)/drivers/usb/typec/P86801_tcpc/inc" \
-          -j$(nproc --all) Image
+          # The scmversion match
+          echo "-gki" > .scmversion
+          
+          export ARCH=arm64
+          FLAGS="ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- LLVM=1 LLVM_IAS=1 HOSTCC=gcc CC=clang -j$(nproc --all)"
+          K_INC="-I$(pwd)/security/selinux/include -I$(pwd)/drivers"
+          K_CFLAGS="-w -D__LINUX_ARM_ARCH__=8 $K_INC"
+          
+          make $FLAGS Image KCFLAGS="$K_CFLAGS"
 
-      - name: 📦 Package with Prebuilt Modules
+      - name: 📦 Package Output
+        if: success()
         run: |
           git clone https://github.com/osm0sis/AnyKernel3.git
           cp arch/arm64/boot/Image AnyKernel3/
-          
-          # Grabbing your 44 uploaded factory modules
-          if [ -d "modules" ]; then
-            mkdir -p AnyKernel3/modules
-            cp modules/*.ko AnyKernel3/modules/
-            
-            # THE HEX PATCH: Force all modules to Uppercase PREEMPT
-            # This fixes "Exec format error" during boot
-            sed -i 's/preempt/PREEMPT/g' AnyKernel3/modules/*.ko
-            echo "Successfully patched 44 modules to PREEMPT"
-          fi
-          
           cd AnyKernel3
-          zip -r9 ../TabA9P-Final-Victory.zip *
+          sed -i 's/do.devicecheck=1/do.devicecheck=0/g' anykernel.sh
+          zip -r9 ../TabA9Plus-Perfect-Match.zip *
 
-      
-      - name: 📤 Upload Result
+      - name: 📤 Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: TabA9P-Final-Victory
-          path: TabA9P-Final-Victory.zip
+          name: TabA9Plus-Perfect-Match
+          path: TabA9Plus-Perfect-Match.zip
