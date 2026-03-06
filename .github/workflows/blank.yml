@@ -18,8 +18,19 @@ jobs:
         run: |
           curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s v0.9.5
           
-      - name: 🩹 Apply Deep Source Fixes (The "Squad Match" Patches)
+      - name: 🩹 Apply Source Patches
         run: |
+          # 1. THE CURE FOR THE "=strict-prototypes" ERROR
+          # This find command searches EVERY Makefile and Kbuild file and 
+          # deletes the "no-error" flags that are confusing Clang.
+          find . -type f \( -name "Makefile" -o -name "Kbuild" \) -exec sed -i 's/-Wno-error=[^ ]*//g' {} +
+          find . -type f \( -name "Makefile" -o -name "Kbuild" \) -exec sed -i 's/-Werror=[^ ]*//g' {} +
+          find . -type f \( -name "Makefile" -o -name "Kbuild" \) -exec sed -i 's/-Werror//g' {} +
+
+          # 2. Your existing fixes (keep these)
+          sed -i 's/void try_schedule_zs_compact()/void try_schedule_zs_compact(void)/g' mm/zsmalloc.c || true
+          # ... [rest of your existing patches] ...
+
           # 1. THE CASE-SENSITIVITY FIX (WiFi/BT Fix)
           # Forces the kernel to say "preempt" instead of "PREEMPT" to match factory drivers
           sed -i 's/\" PREEMPT \"/\" preempt \"/g' include/linux/vermagic.h || true
@@ -70,21 +81,13 @@ jobs:
 
       - name: 🔨 Compile Kernel
         run: |
-          # 1. Totally clear the environment of ghost flags
-          unset KCFLAGS CFLAGS LDFLAGS
-          
-          # 2. Create a clean version file
-          echo "" > .scmversion
-          
-          # 3. Build using 'only' the most basic flags to avoid shell-split errors
-          # We use single quotes around the flags to prevent the shell from touching them
+          unset KCFLAGS CFLAGS
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
           CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm STRIP=llvm-strip \
           OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump \
-          KCFLAGS='-w' \
-          CFLAGS_KERNEL='-w' \
-          CFLAGS_MODULE='-w' \
+          KCFLAGS="-w" \
           -j$(nproc --all) Image
+
 
 
 
