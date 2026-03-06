@@ -1,4 +1,4 @@
-name: Tab A9+ GKI WiFi-Rotation Fix
+name: Tab A9+ GKI WiFi-Rotation
 on:
   workflow_dispatch:
 
