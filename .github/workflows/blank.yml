@@ -20,16 +20,18 @@ jobs:
           
       - name: 🩹 Apply Source Patches
         run: |
-          # 1. THE CURE FOR THE "=strict-prototypes" ERROR
-          # This find command searches EVERY Makefile and Kbuild file and 
-          # deletes the "no-error" flags that are confusing Clang.
-          find . -type f \( -name "Makefile" -o -name "Kbuild" \) -exec sed -i 's/-Wno-error=[^ ]*//g' {} +
-          find . -type f \( -name "Makefile" -o -name "Kbuild" \) -exec sed -i 's/-Werror=[^ ]*//g' {} +
-          find . -type f \( -name "Makefile" -o -name "Kbuild" \) -exec sed -i 's/-Werror//g' {} +
+          # 1. SURGICAL WARNING BYPASS
+          # Only removes the specific error flags, leaving the rest of the Makefile syntax intact.
+          find . -type f \( -name "Makefile" -o -name "Kbuild" \) -exec sed -i 's/-Wno-error=strict-prototypes//g' {} +
+          find . -type f \( -name "Makefile" -o -name "Kbuild" \) -exec sed -i 's/-Wno-error=implicit-function-declaration//g' {} +
+          find . -type f \( -name "Makefile" -o -name "Kbuild" \) -exec sed -i 's/-Wno-error=implicit-int//g' {} +
+          find . -type f \( -name "Makefile" -o -name "Kbuild" \) -exec sed -i 's/-Wno-error=return-type//g' {} +
+          find . -type f \( -name "Makefile" -o -name "Kbuild" \) -exec sed -i 's/-Wno-error=unknown-warning-option//g' {} +
+          
+          # 2. GLOBAL ERROR DISABLE
+          # This tells the top-level Makefile to stop treating warnings as errors globally.
+          sed -i 's/KBUILD_CFLAGS += -Werror/KBUILD_CFLAGS += -w/g' Makefile || true
 
-          # 2. Your existing fixes (keep these)
-          sed -i 's/void try_schedule_zs_compact()/void try_schedule_zs_compact(void)/g' mm/zsmalloc.c || true
-          # ... [rest of your existing patches] ...
 
           # 1. THE CASE-SENSITIVITY FIX (WiFi/BT Fix)
           # Forces the kernel to say "preempt" instead of "PREEMPT" to match factory drivers
@@ -87,10 +89,6 @@ jobs:
           OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump \
           KCFLAGS="-w" \
           -j$(nproc --all) Image
-
-
-
-
 
       - name: 📦 Package Result
         if: success()
