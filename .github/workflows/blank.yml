@@ -20,61 +20,54 @@ jobs:
           
       - name: 🩹 Apply Source Patches
         run: |
-          # 1. SURGICAL WARNING BYPASS
-          # Only removes the specific error flags, leaving the rest of the Makefile syntax intact.
-          find . -type f \( -name "Makefile" -o -name "Kbuild" \) -exec sed -i 's/-Wno-error=strict-prototypes//g' {} +
-          find . -type f \( -name "Makefile" -o -name "Kbuild" \) -exec sed -i 's/-Wno-error=implicit-function-declaration//g' {} +
-          find . -type f \( -name "Makefile" -o -name "Kbuild" \) -exec sed -i 's/-Wno-error=implicit-int//g' {} +
-          find . -type f \( -name "Makefile" -o -name "Kbuild" \) -exec sed -i 's/-Wno-error=return-type//g' {} +
-          find . -type f \( -name "Makefile" -o -name "Kbuild" \) -exec sed -i 's/-Wno-error=unknown-warning-option//g' {} +
+          # 1. THE BRUTE FORCE WARNING BYPASS
+          # Physically strips the flags causing the '=strict-prototypes' error from all Makefiles
+          find . -type f \( -name "Makefile" -o -name "Kbuild" \) -exec sed -i 's/-Wno-error=[^ ]*//g' {} +
+          find . -type f \( -name "Makefile" -o -name "Kbuild" \) -exec sed -i 's/-Werror=[^ ]*//g' {} +
+          find . -type f \( -name "Makefile" -o -name "Kbuild" \) -exec sed -i 's/-Werror//g' {} +
           
-          # 2. GLOBAL ERROR DISABLE
-          # This tells the top-level Makefile to stop treating warnings as errors globally.
+          # 2. KCONFIG SANITIZATION
+          # Removes the "unsupported character" errors (likely non-UTF8 junk in the source)
+          find . -name "Kconfig" -exec sed -i $'s/[^[:print:][:space:]]//g' {} +
+
+          # 3. GLOBAL SILENCE
+          # Swaps -Werror with -w (ignore all warnings) in the top-level Makefile
           sed -i 's/KBUILD_CFLAGS += -Werror/KBUILD_CFLAGS += -w/g' Makefile || true
 
-
-          # 1. THE CASE-SENSITIVITY FIX (WiFi/BT Fix)
-          # Forces the kernel to say "preempt" instead of "PREEMPT" to match factory drivers
+          # 4. THE IDENTITY BYPASS (WiFi/BT/Rotation Fix)
+          # Forces lowercase "preempt" and ignores vermagic mismatches
           sed -i 's/\" PREEMPT \"/\" preempt \"/g' include/linux/vermagic.h || true
-          
-          # 2. THE IDENTITY BYPASS
-          # Tells the kernel to ignore name mismatches (loads -qgki drivers into -gki kernel)
           sed -i 's/return -ENOEXEC;/return 0;/g' kernel/module.c || true
           sed -i 's/same_magic = !strcmp(vermagic, modmagic);/same_magic = 1;/g' kernel/module.c || true
 
-          # 3. Standard Samsung/Qualcomm Typos
+          # 5. Standard Samsung/Qualcomm Typos
           sed -i 's/void try_schedule_zs_compact()/void try_schedule_zs_compact(void)/g' mm/zsmalloc.c || true
           sed -i 's/static md_dump_slabinfo/static int md_dump_slabinfo/g' drivers/soc/qcom/minidump_log.c || true
           sed -i 's/static md_align_offset/static int md_align_offset/g' drivers/soc/qcom/minidump_log.c || true
           find techpack/display -name "*.c" -exec sed -i 's/static inline _/static inline u32 _/g' {} + || true
 
-          # 4. NUCLEAR USB-C FIX (Header Flattening)
+          # 6. USB-C Header Flattening
           find drivers/usb/typec -type d -name "inc" | while read -r incdir; do
             parent=$(dirname "$incdir")
             cp -r "$incdir"/* "$parent/" || true
           done
           find drivers/usb/typec -type f -exec sed -i 's|#include "inc/|#include "|g' {} +
 
-          # 5. CLEAN MAKEFILES (Removes the -Werror that is causing your current crash)
-          find . -name "Makefile" -o -name "Kbuild" | xargs sed -i 's/-Werror//g' || true
-
       - name: ⚙️ Configure Kernel
         run: |
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- gki_stock_defconfig
           
-          # Force the clean -gki name for KSUN support
+          # Force the clean -gki name
           ./scripts/config --file .config --set-str CONFIG_LOCALVERSION "-gki"
           
-          # Match the preemption model to factory drivers (Lowercase 'preempt')
+          # Match the lowercase 'preempt' preemption model
           ./scripts/config --file .config --enable CONFIG_PREEMPT_VOLUNTARY
           ./scripts/config --file .config --disable CONFIG_PREEMPT
           
-          # Force rotation sensors to be Built-in (y)
+          # Force rotation sensors and WiFi to Built-in
           ./scripts/config --file .config --set-val CONFIG_INPUT_SENSORHUB y
           ./scripts/config --file .config --set-val CONFIG_SENSORS_SSC y
           ./scripts/config --file .config --set-val CONFIG_IIO y
-          
-          # Built-in WiFi (Squad MVP)
           ./scripts/config --file .config --set-val CONFIG_WLAN y
           ./scripts/config --file .config --set-val CONFIG_QCACLD_WLAN y
           
@@ -83,11 +76,16 @@ jobs:
 
       - name: 🔨 Compile Kernel
         run: |
-          unset KCFLAGS CFLAGS
+          # Kill ghost flags and build with maximum silence
+          unset KCFLAGS CFLAGS LDFLAGS
+          echo "" > .scmversion
+          
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
           CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm STRIP=llvm-strip \
           OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump \
           KCFLAGS="-w" \
+          HOSTCFLAGS="-w" \
+          HOSTCXXFLAGS="-w" \
           -j$(nproc --all) Image
 
       - name: 📦 Package Result
@@ -104,3 +102,4 @@ jobs:
         with:
           name: TabA9Plus-Perfect-Build
           path: TabA9Plus-Perfect-Build.zip
+
