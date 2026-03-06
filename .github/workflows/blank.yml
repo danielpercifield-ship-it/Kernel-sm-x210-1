@@ -36,7 +36,16 @@ jobs:
           #define TRACE_INCLUDE_FILE trace
           #include <trace/define_trace.h>
           EOF
+        
+          # 5. 🔌 USB-C TCPC HEADER FIX
+          # This finds all instances of #include "inc/..." and changes them to #include "..."
+          # so the compiler can find them in the local directory.
+          find drivers/usb/typec/P86801_tcpc -type f -name "*.h" -exec sed -i 's|#include "inc/|#include "|g' {} + || true
+          find drivers/usb/typec/P86801_tcpc -type f -name "*.c" -exec sed -i 's|#include "inc/|#include "|g' {} + || true
 
+          # 6. Ensure the 'inc' directory is in the include path for this specific driver
+          # We append the local 'inc' directory to the Makefile's header search path.
+          echo "subdir-ccflags-y += -Idrivers/usb/typec/P86801_tcpc/inc" >> drivers/usb/typec/P86801_tcpc/Makefile || true
 
 
       - name: ⚙️ Configure Kernel
