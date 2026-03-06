@@ -37,6 +37,12 @@ jobs:
           sed -i 's/static md_align_offset/static int md_align_offset/g' drivers/soc/qcom/minidump_log.c || true
           find techpack/display -name "*.c" -exec sed -i 's/static inline _/static inline int _/g' {} + || true
 
+          /* This part must be outside protection */
+          #undef TRACE_INCLUDE_PATH
+          #define TRACE_INCLUDE_PATH ../../kernel/sched/walt  // Change from '.' to this path
+          #define TRACE_INCLUDE_FILE trace
+          #include <trace/define_trace.h>
+
       - name: ⚙️ Configure Kernel
         run: |
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- gki_stock_defconfig
