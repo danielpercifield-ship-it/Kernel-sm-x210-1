@@ -42,7 +42,7 @@ jobs:
       - name: ⚙️ Configure Kernel (The "Everything-In" Setup)
         run: |
           # Load the base defconfig
-          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- gta9pwifi_eur_open_defconfig
+          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- gki_stock_defconfig
           
           # 🛑 THE WIFI FIX: Force WiFi to be Built-in (y)
           ./scripts/config --file .config --set-val CONFIG_WLAN y
