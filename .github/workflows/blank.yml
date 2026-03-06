@@ -70,21 +70,22 @@ jobs:
 
       - name: 🔨 Compile Kernel
         run: |
-          # Clear any leftover environment variables that might be corrupted
-          unset KCFLAGS
-          unset CFLAGS
-          unset LDFLAGS
+          # 1. Totally clear the environment of ghost flags
+          unset KCFLAGS CFLAGS LDFLAGS
           
+          # 2. Create a clean version file
           echo "" > .scmversion
           
-          # Run make with a clean environment (env -i) or force-override the flags
+          # 3. Build using 'only' the most basic flags to avoid shell-split errors
+          # We use single quotes around the flags to prevent the shell from touching them
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
           CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm STRIP=llvm-strip \
           OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump \
-          KCFLAGS="-w" \
-          CFLAGS_KERNEL="-w" \
-          CFLAGS_MODULE="-w" \
+          KCFLAGS='-w' \
+          CFLAGS_KERNEL='-w' \
+          CFLAGS_MODULE='-w' \
           -j$(nproc --all) Image
+
 
 
 
