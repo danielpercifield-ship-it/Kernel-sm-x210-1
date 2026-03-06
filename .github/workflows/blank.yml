@@ -20,33 +20,28 @@ jobs:
           
       - name: 🩹 Apply Source Patches
         run: |
-          # 1. THE BRUTE FORCE WARNING BYPASS
-          # Physically strips the flags causing the '=strict-prototypes' error from all Makefiles
-          find . -type f \( -name "Makefile" -o -name "Kbuild" \) -exec sed -i 's/-Wno-error=[^ ]*//g' {} +
-          find . -type f \( -name "Makefile" -o -name "Kbuild" \) -exec sed -i 's/-Werror=[^ ]*//g' {} +
-          find . -type f \( -name "Makefile" -o -name "Kbuild" \) -exec sed -i 's/-Werror//g' {} +
+          # 1. THE SAFETY VALVE: Fix global Werror without breaking syntax
+          # We swap '-Werror' for '-w' (ignore all warnings) specifically in the flag definitions
+          sed -i 's/KBUILD_CFLAGS   += -Werror/KBUILD_CFLAGS   += -w/g' Makefile
+          sed -i 's/KBUILD_CPPFLAGS += -Werror/KBUILD_CPPFLAGS += -w/g' Makefile
           
-          # 2. KCONFIG SANITIZATION
-          # Removes the "unsupported character" errors (likely non-UTF8 junk in the source)
+          # 2. TARGETED SCRIPT FIX
+          # This targets the file that actually generates the '=strict-prototypes' flags.
+          # We use a very specific sed to avoid touching brackets/parentheses.
+          if [ -f scripts/Makefile.extrawarn ]; then
+            sed -i 's/-Wno-error=[^ ]*//g' scripts/Makefile.extrawarn
+          fi
+
+          # 3. KCONFIG SANITIZATION (Fixing the "unsupported character" log spam)
           find . -name "Kconfig" -exec sed -i $'s/[^[:print:][:space:]]//g' {} +
 
-          # 3. GLOBAL SILENCE
-          # Swaps -Werror with -w (ignore all warnings) in the top-level Makefile
-          sed -i 's/KBUILD_CFLAGS += -Werror/KBUILD_CFLAGS += -w/g' Makefile || true
-
           # 4. THE IDENTITY BYPASS (WiFi/BT/Rotation Fix)
-          # Forces lowercase "preempt" and ignores vermagic mismatches
           sed -i 's/\" PREEMPT \"/\" preempt \"/g' include/linux/vermagic.h || true
           sed -i 's/return -ENOEXEC;/return 0;/g' kernel/module.c || true
           sed -i 's/same_magic = !strcmp(vermagic, modmagic);/same_magic = 1;/g' kernel/module.c || true
 
-          # 5. Standard Samsung/Qualcomm Typos
+          # 5. Standard Samsung/Qualcomm Fixes
           sed -i 's/void try_schedule_zs_compact()/void try_schedule_zs_compact(void)/g' mm/zsmalloc.c || true
-          sed -i 's/static md_dump_slabinfo/static int md_dump_slabinfo/g' drivers/soc/qcom/minidump_log.c || true
-          sed -i 's/static md_align_offset/static int md_align_offset/g' drivers/soc/qcom/minidump_log.c || true
-          find techpack/display -name "*.c" -exec sed -i 's/static inline _/static inline u32 _/g' {} + || true
-
-          # 6. USB-C Header Flattening
           find drivers/usb/typec -type d -name "inc" | while read -r incdir; do
             parent=$(dirname "$incdir")
             cp -r "$incdir"/* "$parent/" || true
