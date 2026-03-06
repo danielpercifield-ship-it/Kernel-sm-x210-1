@@ -45,7 +45,7 @@ jobs:
 
       - name: ⚙️ Configure Kernel (Answering the Questions)
         run: |
-          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- gta9pwifi_eur_open_defconfig
+          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- gki_stock_defconfig
           
           # 🛑 SATISFYING THE CONFIG QUESTIONS (This stops the build from hanging)
           ./scripts/config --file .config --disable LTO_CLANG
