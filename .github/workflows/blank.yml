@@ -40,22 +40,22 @@ jobs:
           find drivers/usb/typec/P86801_tcpc -type f -name "*.c" -exec sed -i 's|#include "inc/|#include "|g' {} + || true
           echo "subdir-ccflags-y += -Idrivers/usb/typec/P86801_tcpc/inc" >> drivers/usb/typec/P86801_tcpc/Makefile || true
       
-      - name: 🩹 Apply Deep Source Fixes (The Static Scrapper)
+      - name: 🛡️ KILL THE DIRTY TAG (Anti-Exec-Format-Error)
         run: |
-          sed -i 's/static struct class \*sensors_class;/struct class \*sensors_class;/g' drivers/sensors/sensors_class.c || true
-          find drivers/net/ethernet/qualcomm/rmnet -name "*.c" -exec sed -i 's/static int embms_tm_multicast_recv/int embms_tm_multicast_recv/g' {} + || true
-          find drivers/thermal/qcom -name "*.c" -exec sed -i 's/static int tsens_mtc_reset_history_counter/int tsens_mtc_reset_history_counter/g' {} + || true
-          find techpack/display -name "*.c" -exec sed -i 's/static int sd77428_hw_init/int sd77428_hw_init/g' {} + || true
+          # This forces the script that generates the version string to NEVER add '-dirty'
+          sed -i 's/res="$res-dirty"/res="$res"/' scripts/setlocalversion
+          # Also disable the auto-localversion feature in the build scripts
+          echo "" > .scmversion
 
       - name: ⚙️ Configure Kernel
         run: |
           # 🎯 PATCHING MAKEFILE FOR 175-MODULE COMPATIBILITY
-          # This matches your tablet's vermagic exactly
+          # We lock the EXTRAVERSION to match your stock vermagic
           sed -i 's/^EXTRAVERSION =.*/EXTRAVERSION = -28972655-abX210XXS6CYB9/' Makefile
           
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- gki_stock_defconfig
           
-          # CLEARING LOCALVERSION (Modules don't have -gki suffix)
+          # CLEARING LOCALVERSION so it doesn't add '-gki' or other suffixes
           ./scripts/config --file .config --set-str CONFIG_LOCALVERSION ""
           ./scripts/config --file .config --enable CONFIG_PREEMPT
           ./scripts/config --file .config --disable LTO_CLANG
@@ -69,7 +69,8 @@ jobs:
 
       - name: 🔨 Compile Kernel
         run: |
-          # Use LOCALVERSION="" to prevent a '+' or '-dirty' being added to the end
+          # We explicitly export LOCALVERSION as empty during the final make
+          export LOCALVERSION=""
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- LLVM=1 LLVM_IAS=1 \
           LOCALVERSION="" \
           KCFLAGS="-w -Wno-error" HOSTCFLAGS="-w" HOSTCXXFLAGS="-w" \
@@ -80,7 +81,6 @@ jobs:
         run: |
           if [ -f arch/arm64/boot/Image ]; then
             mkdir -p out/modules
-            # We pack the GitHub modules just for reference, but you will use your 175 tablet modules
             find . -name "*.ko" -exec cp {} out/modules/ \;
             cp arch/arm64/boot/Image out/
             cd out && zip -r ../TabA9Plus-Victory.zip *
@@ -94,4 +94,3 @@ jobs:
         with:
           name: TabA9Plus-Victory
           path: TabA9Plus-Victory.zip
-
