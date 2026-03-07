@@ -27,9 +27,7 @@ jobs:
           sed -i '/#include <trace\/define_trace.h>/d' kernel/sched/walt/trace.h || true
 
           # 2. 🚀 THE CORRECTED TRACE.H FIX
-          # Using 'EOF' in single quotes prevents variable expansion and marker leaks
           cat <<'EOF' >> kernel/sched/walt/trace.h
-
           /* Manual fix for Trace pathing */
           #undef TRACE_INCLUDE_PATH
           #define TRACE_INCLUDE_PATH ../../kernel/sched/walt
@@ -37,44 +35,33 @@ jobs:
           #include <trace/define_trace.h>
           EOF
         
-          # 5. 🔌 USB-C TCPC HEADER FIX
-          # This finds all instances of #include "inc/..." and changes them to #include "..."
-          # so the compiler can find them in the local directory.
+          # 3. 🔌 USB-C TCPC HEADER FIX
           find drivers/usb/typec/P86801_tcpc -type f -name "*.h" -exec sed -i 's|#include "inc/|#include "|g' {} + || true
           find drivers/usb/typec/P86801_tcpc -type f -name "*.c" -exec sed -i 's|#include "inc/|#include "|g' {} + || true
-
-          # 6. Ensure the 'inc' directory is in the include path for this specific driver
-          # We append the local 'inc' directory to the Makefile's header search path.
           echo "subdir-ccflags-y += -Idrivers/usb/typec/P86801_tcpc/inc" >> drivers/usb/typec/P86801_tcpc/Makefile || true
       
       - name: 🩹 Apply Deep Source Fixes (The Static Scrapper)
         run: |
-          # 1. FIX SENSORS CLASS (Common Samsung/Qualcomm conflict)
-          # Removes 'static' from the sensors_class declaration so it can be exported
           sed -i 's/static struct class \*sensors_class;/struct class \*sensors_class;/g' drivers/sensors/sensors_class.c || true
-          
-          # 2. FIX EMBMS MULTICAST (Networking conflict)
-          # Finds the definition and removes static to allow EXPORT_SYMBOL to work
           find drivers/net/ethernet/qualcomm/rmnet -name "*.c" -exec sed -i 's/static int embms_tm_multicast_recv/int embms_tm_multicast_recv/g' {} + || true
-
-          # 3. FIX TSENS MTC (Thermal management conflict)
           find drivers/thermal/qcom -name "*.c" -exec sed -i 's/static int tsens_mtc_reset_history_counter/int tsens_mtc_reset_history_counter/g' {} + || true
-
-          # 4. FIX SD77428 HW INIT (Display/Touch conflict)
           find techpack/display -name "*.c" -exec sed -i 's/static int sd77428_hw_init/int sd77428_hw_init/g' {} + || true
-
 
       - name: ⚙️ Configure Kernel
         run: |
+          # 🎯 PATCHING MAKEFILE FOR 175-MODULE COMPATIBILITY
+          # This matches your tablet's vermagic exactly
+          sed -i 's/^EXTRAVERSION =.*/EXTRAVERSION = -28972655-abX210XXS6CYB9/' Makefile
+          
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- gki_stock_defconfig
           
-          # SETTINGS FOR KERNELSU AND BOOTLOADER ACCEPTANCE
-          ./scripts/config --file .config --set-str CONFIG_LOCALVERSION "-gki"
+          # CLEARING LOCALVERSION (Modules don't have -gki suffix)
+          ./scripts/config --file .config --set-str CONFIG_LOCALVERSION ""
           ./scripts/config --file .config --enable CONFIG_PREEMPT
           ./scripts/config --file .config --disable LTO_CLANG
           ./scripts/config --file .config --enable CONFIG_KSU
           
-          # WI-FI & SENSORS AS MODULES (Most stable for Tab A9+)
+          # WI-FI & SENSORS
           ./scripts/config --file .config --set-val CONFIG_WLAN y
           ./scripts/config --file .config --set-val CONFIG_QCACLD_WLAN y
           
@@ -82,12 +69,9 @@ jobs:
 
       - name: 🔨 Compile Kernel
         run: |
-          # 1. Restore the original Makefile if possible (git checkout Makefile)
-          git checkout Makefile 2>/dev/null || true
-          
-          # 2. Compile with global warning suppression
-          # This is SAFER than sed-ing the source code.
+          # Use LOCALVERSION="" to prevent a '+' or '-dirty' being added to the end
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- LLVM=1 LLVM_IAS=1 \
+          LOCALVERSION="" \
           KCFLAGS="-w -Wno-error" HOSTCFLAGS="-w" HOSTCXXFLAGS="-w" \
           -j$(nproc --all) Image modules 2>&1 | tee build.log
 
@@ -96,6 +80,7 @@ jobs:
         run: |
           if [ -f arch/arm64/boot/Image ]; then
             mkdir -p out/modules
+            # We pack the GitHub modules just for reference, but you will use your 175 tablet modules
             find . -name "*.ko" -exec cp {} out/modules/ \;
             cp arch/arm64/boot/Image out/
             cd out && zip -r ../TabA9Plus-Victory.zip *
