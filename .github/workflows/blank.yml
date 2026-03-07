@@ -1,4 +1,4 @@
-name: Tab A9+ WiFi & Rotation Final V1ctory
+name: Tab A9+ Final Victory Build
 on:
   workflow_dispatch:
 
@@ -20,15 +20,16 @@ jobs:
           
       - name: 🩹 Apply Surgical Fixes
         run: |
-          # 1. TRACE.H PATH FIX
-          sed -i '/Manual fix for Trace pathing/d' kernel/sched/walt/trace.h || true
-          cat <<'EOF' >> kernel/sched/walt/trace.h
+          # 1. 🎯 TARGETED WALT TRACE FIX (Fixes the './trace.h' fatal error)
+          # This deletes the broken logic at the end and appends hard-coded paths
+          sed -i '/#undef TRACE_INCLUDE_PATH/,$d' kernel/sched/walt/trace.h
+          cat <<EOF >> kernel/sched/walt/trace.h
           #undef TRACE_INCLUDE_PATH
           #define TRACE_INCLUDE_PATH ../../kernel/sched/walt
           #define TRACE_INCLUDE_FILE trace
           #include <trace/define_trace.h>
           EOF
-        
+
           # 2. USB-C TCPC HEADER FIX
           find drivers/usb/typec/P86801_tcpc -type f -name "*.[hc]" -exec sed -i 's|#include "inc/|#include "|g' {} + || true
           echo "subdir-ccflags-y += -Idrivers/usb/typec/P86801_tcpc/inc" >> drivers/usb/typec/P86801_tcpc/Makefile || true
@@ -36,7 +37,7 @@ jobs:
       - name: 🛡️ IDENTITY CLONE & SECURITY BYPASS
         run: |
           # 🎯 FORCE THE EXACT VERSION STRING
-          # This matches '5.4.249-qgki-28972655-abX210XXS6CYB9'
+          # Matches '5.4.249-qgki-28972655-abX210XXS6CYB9'
           sed -i 's/^EXTRAVERSION =.*/EXTRAVERSION = -qgki-28972655-abX210XXS6CYB9/' Makefile
           
           # 🚫 KILL DIRTY/PLUS TAGS
@@ -49,6 +50,7 @@ jobs:
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- gki_stock_defconfig
           
           # 🔓 DISABLE ALL SIGNATURE/VERSION CHECKS
+          # This allows your 175 patched modules to load even if the 'unique_id' is missing
           ./scripts/config --file .config --disable CONFIG_MODULE_SIG
           ./scripts/config --file .config --disable CONFIG_MODULE_SIG_ALL
           ./scripts/config --file .config --disable CONFIG_MODULE_SIG_FORCE
@@ -68,19 +70,4 @@ jobs:
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- LLVM=1 LLVM_IAS=1 \
           LOCALVERSION="" \
           KCFLAGS="-w -Wno-error" HOSTCFLAGS="-w" HOSTCXXFLAGS="-w" \
-          -j$(nproc --all) Image.gz Image modules 2>&1 | tee build.log
-
-      - name: 📦 Package Result
-        if: success()
-        run: |
-          mkdir -p out/modules
-          [ -f arch/arm64/boot/Image ] && cp arch/arm64/boot/Image out/
-          find . -name "*.ko" -exec cp {} out/modules/ \;
-          cd out && zip -r ../TabA9Plus-Victory.zip *
-
-      - name: 📤 Upload Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: TabA9Plus-Victory
-          path: TabA9Plus-Victory.zip
-
+          -j$(nproc --all) Image.gz Image modules 2>&
