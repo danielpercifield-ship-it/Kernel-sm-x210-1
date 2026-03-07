@@ -64,7 +64,16 @@ jobs:
           # WI-FI & SENSORS
           ./scripts/config --file .config --set-val CONFIG_WLAN y
           ./scripts/config --file .config --set-val CONFIG_QCACLD_WLAN y
-          
+
+          # Disable Module Signature Verification (Allows unsigned drivers)
+          ./scripts/config --file .config --disable CONFIG_MODULE_SIG
+          ./scripts/config --file .config --disable CONFIG_MODULE_SIG_ALL
+          ./scripts/config --file .config --disable CONFIG_MODULE_SIG_FORCE
+
+          # Enable Loading of "Dirty" or mismatched modules
+          ./scripts/config --file .config --set-val CONFIG_MODVERSIONS n
+          ./scripts/config --file .config --enable CONFIG_MODULE_FORCE_LOAD
+    
           yes "" | make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
 
       - name: 🔨 Compile Kernel
@@ -74,7 +83,7 @@ jobs:
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- LLVM=1 LLVM_IAS=1 \
           LOCALVERSION="" \
           KCFLAGS="-w -Wno-error" HOSTCFLAGS="-w" HOSTCXXFLAGS="-w" \
-          -j$(nproc --all) Image.gz Image modules 2>&1 | tee build.log
+          -j$(nproc --all) Image.gz Image 2>&1 | tee build.log
 
       - name: 📦 Package Result
         if: success()
