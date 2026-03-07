@@ -18,88 +18,69 @@ jobs:
         run: |
           curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s v0.9.5
           
-      - name: 🩹 Apply Deep Source Fixes (Surgical Precision)
+      - name: 🩹 Apply Surgical Fixes
         run: |
-          # 1. Clean up previous failed attempts
+          # 1. TRACE.H PATH FIX
           sed -i '/Manual fix for Trace pathing/d' kernel/sched/walt/trace.h || true
-          sed -i '/TRACE_INCLUDE_PATH/d' kernel/sched/walt/trace.h || true
-          sed -i '/TRACE_INCLUDE_FILE/d' kernel/sched/walt/trace.h || true
-          sed -i '/#include <trace\/define_trace.h>/d' kernel/sched/walt/trace.h || true
-
-          # 2. 🚀 THE CORRECTED TRACE.H FIX
           cat <<'EOF' >> kernel/sched/walt/trace.h
-          /* Manual fix for Trace pathing */
           #undef TRACE_INCLUDE_PATH
           #define TRACE_INCLUDE_PATH ../../kernel/sched/walt
           #define TRACE_INCLUDE_FILE trace
           #include <trace/define_trace.h>
           EOF
         
-          # 3. 🔌 USB-C TCPC HEADER FIX
-          find drivers/usb/typec/P86801_tcpc -type f -name "*.h" -exec sed -i 's|#include "inc/|#include "|g' {} + || true
-          find drivers/usb/typec/P86801_tcpc -type f -name "*.c" -exec sed -i 's|#include "inc/|#include "|g' {} + || true
+          # 2. USB-C TCPC HEADER FIX
+          find drivers/usb/typec/P86801_tcpc -type f -name "*.[hc]" -exec sed -i 's|#include "inc/|#include "|g' {} + || true
           echo "subdir-ccflags-y += -Idrivers/usb/typec/P86801_tcpc/inc" >> drivers/usb/typec/P86801_tcpc/Makefile || true
-      
-      - name: 🛡️ KILL THE DIRTY TAG (Anti-Exec-Format-Error)
+
+      - name: 🛡️ IDENTITY CLONE & SECURITY BYPASS
         run: |
-          # This forces the script that generates the version string to NEVER add '-dirty'
+          # 🎯 FORCE THE EXACT VERSION STRING
+          # This matches '5.4.249-qgki-28972655-abX210XXS6CYB9'
+          sed -i 's/^EXTRAVERSION =.*/EXTRAVERSION = -qgki-28972655-abX210XXS6CYB9/' Makefile
+          
+          # 🚫 KILL DIRTY/PLUS TAGS
           sed -i 's/res="$res-dirty"/res="$res"/' scripts/setlocalversion
-          # Also disable the auto-localversion feature in the build scripts
+          sed -i 's/res="$res+"//' scripts/setlocalversion
           echo "" > .scmversion
 
       - name: ⚙️ Configure Kernel
         run: |
-          # 🎯 PATCHING MAKEFILE FOR 175-MODULE COMPATIBILITY
-          # We lock the EXTRAVERSION to match your stock vermagic
-          sed -i 's/^EXTRAVERSION =.*/EXTRAVERSION = -28972655-abX210XXS6CYB9/' Makefile
-          
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- gki_stock_defconfig
           
-          # CLEARING LOCALVERSION so it doesn't add '-gki' or other suffixes
-          ./scripts/config --file .config --set-str CONFIG_LOCALVERSION ""
-          ./scripts/config --file .config --enable CONFIG_PREEMPT
-          ./scripts/config --file .config --disable LTO_CLANG
-          ./scripts/config --file .config --enable CONFIG_KSU
-          
-          # WI-FI & SENSORS
-          ./scripts/config --file .config --set-val CONFIG_WLAN y
-          ./scripts/config --file .config --set-val CONFIG_QCACLD_WLAN y
-
-          # Disable Module Signature Verification (Allows unsigned drivers)
+          # 🔓 DISABLE ALL SIGNATURE/VERSION CHECKS
           ./scripts/config --file .config --disable CONFIG_MODULE_SIG
           ./scripts/config --file .config --disable CONFIG_MODULE_SIG_ALL
           ./scripts/config --file .config --disable CONFIG_MODULE_SIG_FORCE
-
-          # Enable Loading of "Dirty" or mismatched modules
-          ./scripts/config --file .config --set-val CONFIG_MODVERSIONS n
+          ./scripts/config --file .config --disable CONFIG_MODVERSIONS
           ./scripts/config --file .config --enable CONFIG_MODULE_FORCE_LOAD
-    
+          
+          # ⚡ ENABLE PREEMPTION & KSU
+          ./scripts/config --file .config --set-str CONFIG_LOCALVERSION ""
+          ./scripts/config --file .config --enable CONFIG_PREEMPT
+          ./scripts/config --file .config --enable CONFIG_KSU
+          ./scripts/config --file .config --disable LTO_CLANG
+          
           yes "" | make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
 
       - name: 🔨 Compile Kernel
         run: |
-          # We explicitly export LOCALVERSION as empty during the final make
-          export LOCALVERSION=""
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- LLVM=1 LLVM_IAS=1 \
           LOCALVERSION="" \
           KCFLAGS="-w -Wno-error" HOSTCFLAGS="-w" HOSTCXXFLAGS="-w" \
-          -j$(nproc --all) Image.gz Image 2>&1 | tee build.log
+          -j$(nproc --all) Image.gz Image modules 2>&1 | tee build.log
 
       - name: 📦 Package Result
         if: success()
         run: |
-          if [ -f arch/arm64/boot/Image ]; then
-            mkdir -p out/modules
-            find . -name "*.ko" -exec cp {} out/modules/ \;
-            cp arch/arm64/boot/Image out/
-            cd out && zip -r ../TabA9Plus-Victory.zip *
-          else
-            exit 1
-          fi
+          mkdir -p out/modules
+          [ -f arch/arm64/boot/Image ] && cp arch/arm64/boot/Image out/
+          find . -name "*.ko" -exec cp {} out/modules/ \;
+          cd out && zip -r ../TabA9Plus-Victory.zip *
 
       - name: 📤 Upload Artifact
-        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: TabA9Plus-Victory
           path: TabA9Plus-Victory.zip
+
