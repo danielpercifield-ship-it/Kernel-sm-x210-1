@@ -1,4 +1,4 @@
-name: Tab A9+ Final Victory Build
+name: Tab A9+ WiFi & Rotation Final V1ctory
 on:
   workflow_dispatch:
 
@@ -18,29 +18,27 @@ jobs:
         run: |
           curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s v0.9.5
           
-      - name: 🩹 Apply Surgical Fixes
+      - name: 🩹 Apply Deep Source Fixes (Surgical Precision)
         run: |
-          # 1. 🎯 TARGETED WALT TRACE FIX (Fixes the './trace.h' fatal error)
-          # This deletes the broken logic at the end and appends hard-coded paths
-          sed -i '/#undef TRACE_INCLUDE_PATH/,$d' kernel/sched/walt/trace.h
-          cat <<EOF >> kernel/sched/walt/trace.h
+          sed -i '/Manual fix for Trace pathing/d' kernel/sched/walt/trace.h || true
+          sed -i '/TRACE_INCLUDE_PATH/d' kernel/sched/walt/trace.h || true
+          sed -i '/#include <trace\/define_trace.h>/d' kernel/sched/walt/trace.h || true
+          
+          cat <<'EOF' >> kernel/sched/walt/trace.h
+          /* Manual fix for Trace pathing */
           #undef TRACE_INCLUDE_PATH
           #define TRACE_INCLUDE_PATH ../../kernel/sched/walt
           #define TRACE_INCLUDE_FILE trace
           #include <trace/define_trace.h>
           EOF
-
-          # 2. USB-C TCPC HEADER FIX
-          find drivers/usb/typec/P86801_tcpc -type f -name "*.[hc]" -exec sed -i 's|#include "inc/|#include "|g' {} + || true
+        
+          find drivers/usb/typec/P86801_tcpc -type f -name "*.h" -exec sed -i 's|#include "inc/|#include "|g' {} + || true
+          find drivers/usb/typec/P86801_tcpc -type f -name "*.c" -exec sed -i 's|#include "inc/|#include "|g' {} + || true
           echo "subdir-ccflags-y += -Idrivers/usb/typec/P86801_tcpc/inc" >> drivers/usb/typec/P86801_tcpc/Makefile || true
-
-      - name: 🛡️ IDENTITY CLONE & SECURITY BYPASS
+      
+      - name: 🛡️ IDENTITY CLONE & ANTI-DIRTY TAG
         run: |
-          # 🎯 FORCE THE EXACT VERSION STRING
-          # Matches '5.4.249-qgki-28972655-abX210XXS6CYB9'
           sed -i 's/^EXTRAVERSION =.*/EXTRAVERSION = -qgki-28972655-abX210XXS6CYB9/' Makefile
-          
-          # 🚫 KILL DIRTY/PLUS TAGS
           sed -i 's/res="$res-dirty"/res="$res"/' scripts/setlocalversion
           sed -i 's/res="$res+"//' scripts/setlocalversion
           echo "" > .scmversion
@@ -48,24 +46,35 @@ jobs:
       - name: ⚙️ Configure Kernel
         run: |
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- gki_stock_defconfig
-          
-          # 🔓 DISABLE ALL SIGNATURE/VERSION CHECKS
-          # This allows your 175 patched modules to load even if the 'unique_id' is missing
-          ./scripts/config --file .config --disable CONFIG_MODULE_SIG
-          ./scripts/config --file .config --disable CONFIG_MODULE_SIG_ALL
-          ./scripts/config --file .config --disable CONFIG_MODULE_SIG_FORCE
-          ./scripts/config --file .config --disable CONFIG_MODVERSIONS
-          ./scripts/config --file .config --enable CONFIG_MODULE_FORCE_LOAD
-          
-          # ⚡ ENABLE PREEMPTION & KSU
           ./scripts/config --file .config --set-str CONFIG_LOCALVERSION ""
           ./scripts/config --file .config --enable CONFIG_PREEMPT
-          ./scripts/config --file .config --enable CONFIG_KSU
           ./scripts/config --file .config --disable LTO_CLANG
-          
+          ./scripts/config --file .config --enable CONFIG_KSU
+          ./scripts/config --file .config --disable CONFIG_MODULE_SIG
+          ./scripts/config --file .config --disable CONFIG_MODVERSIONS
+          ./scripts/config --file .config --enable CONFIG_MODULE_FORCE_LOAD
           yes "" | make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
 
-      - name: 🔨 Compile Kernel
+      - name: 🔨 Compile Kernel (Image Only)
         run: |
-          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- LLVM=1 LLVM_IAS=1 LOCALVERSION="" KCFLAGS="-w -Wno-error" HOSTCFLAGS="-w" HOSTCXXFLAGS="-w" -j$(nproc --all) Image.gz Image modules 2>&1 | tee build.log
+          # Removed 'modules' to save time and prevent syntax errors
+          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- LLVM=1 LLVM_IAS=1 LOCALVERSION="" KCFLAGS="-w -Wno-error" HOSTCFLAGS="-w" HOSTCXXFLAGS="-w" -j$(nproc --all) Image.gz Image 2>&1 | tee build.log
 
+      - name: 📦 Package Result
+        if: success()
+        run: |
+          mkdir -p out
+          if [ -f arch/arm64/boot/Image ]; then
+            cp arch/arm64/boot/Image out/
+            # Zip just the Image for easy transfer
+            cd out && zip -r ../TabA9Plus-Kernel-Only.zip *
+          else
+            echo "Error: Image not found!" && exit 1
+          fi
+
+      - name: 📤 Upload Artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: TabA9Plus-Kernel-Only
+          path: TabA9Plus-Kernel-Only.zip
