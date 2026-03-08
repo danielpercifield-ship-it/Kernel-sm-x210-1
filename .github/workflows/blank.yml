@@ -53,6 +53,8 @@ jobs:
           ./scripts/config --file .config --disable CONFIG_MODULE_SIG
           ./scripts/config --file .config --disable CONFIG_MODVERSIONS
           ./scripts/config --file .config --enable CONFIG_MODULE_FORCE_LOAD
+          ./scripts/config --file .config --enable CONFIG_SECURITY_SELINUX_DEVELOP
+
           yes "" | make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
 
       - name: 🔨 Compile Kernel (Image Only)
